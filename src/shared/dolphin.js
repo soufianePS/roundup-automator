@@ -101,13 +101,13 @@ export class DolphinAnty {
     return r?.data || r?.profiles || r;
   }
 
-  /** Best-effort list: try local (free-plan friendly) first, then cloud. */
+  /** Best-effort list: cloud (works with a valid token) first, then local. */
   async listProfilesAny(opts) {
-    try { return await this.listProfilesLocal(opts); }
-    catch (localErr) {
-      try { return await this.listProfiles(opts); }
-      catch (cloudErr) {
-        throw new Error(`local: ${localErr.message.split('\n')[0]} · cloud: ${cloudErr.message.split('\n')[0]}`);
+    try { return await this.listProfiles(opts); }
+    catch (cloudErr) {
+      try { return await this.listProfilesLocal(opts); }
+      catch (localErr) {
+        throw new Error(`cloud: ${cloudErr.message.split('\n')[0]} · local: ${localErr.message.split('\n')[0]}`);
       }
     }
   }
