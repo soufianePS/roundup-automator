@@ -3,8 +3,10 @@
     <div class="brand"><div class="dot">R</div><div><b>Roundup</b><span>Family Home Studio</span></div></div>
     <nav>
       <a href="/"><span class="ic">◧</span> Overview</a>
-      <a href="/"><span class="ic">✦</span> Keyword Opportunities</a>
-      <a href="/"><span class="ic">☰</span> Topic Queue</a>
+      <a href="/#keywords"><span class="ic">✦</span> Keyword Opportunities</a>
+      <a href="/#queue"><span class="ic">☰</span> Topic Queue</a>
+      <a class="soon"><span class="ic">▤</span> Articles <em>soon</em></a>
+      <a class="soon"><span class="ic">◈</span> Pins &amp; Schedule <em>soon</em></a>
       <a class="active" href="/settings"><span class="ic">⚙</span> Settings</a>
     </nav>
     <div class="foot">local · sqlite · no server</div>
@@ -97,8 +99,22 @@ function renderDiscovered(){
   if(cats.length){ el.innerHTML += `<span class="lbl">Categories</span>` + cats.map(c=>`<span class="chip-static">${esc(c.name)}${c.count!=null?` · ${c.count}`:''}</span>`).join(''); }
 }
 function renderPins(){
-  $('pinChips').innerHTML = (cur.pinterest_accounts||[]).map((p,i)=>
-    `<span class="chip-x">${esc(p.name||p.dolphinProfileId)} <button data-rm="${i}">×</button></span>`).join('');
+  $('pinChips').innerHTML = (cur.pinterest_accounts||[]).map((p,i)=>{
+    const at = p.username ? ` · @${esc(p.username)}` : '';
+    const bd = (p.boards&&p.boards.length) ? ` · ${p.boards.length} boards` : '';
+    return `<span class="chip-x">${esc(p.name||p.dolphinProfileId)}${at}${bd} <button data-rm="${i}">×</button></span>`;
+  }).join('');
+}
+async function addPinAccount(profileId, name){
+  if(!profileId) return;
+  cur.pinterest_accounts = cur.pinterest_accounts||[];
+  if(cur.pinterest_accounts.some(p=>p.dolphinProfileId===profileId)) { setStatus('pinStatus','idle','already added'); return; }
+  setStatus('pinStatus','busy','launching profile to fetch account info… (~30s)');
+  const r = await fetch('/api/pinterest/probe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({profileId})}).then(r=>r.json()).catch(e=>({ok:false,error:e.message}));
+  const acct = { dolphinProfileId:profileId, name };
+  if(r.ok){ acct.username=r.username; acct.boards=r.boards||[]; setStatus('pinStatus','ok',`added @${r.username} · ${(r.boards||[]).length} boards (remember to Save)`); }
+  else { setStatus('pinStatus','err',`added, but couldn't fetch info: ${esc(r.error||'failed')} — open Dolphin app`); }
+  cur.pinterest_accounts.push(acct); renderPins();
 }
 function setStatus(id,kind,text){ const el=$(id); el.className='status '+kind; el.textContent=text; el.style.display='inline-flex'; }
 
@@ -125,12 +141,12 @@ async function loadDolphin(){
     if(!r.ok || j.error) throw new Error(j.error||('HTTP '+r.status));
     dolphinProfiles = j;
     picker.innerHTML = `<select id="pinSelect"><option value="">Select a Dolphin profile…</option>${j.map(p=>`<option value="${esc(p.id)}" data-name="${esc(p.name)}">${esc(p.name)} (${esc(p.id)})</option>`).join('')}</select><button class="btn" id="addPinBtn">Add account</button>`;
-    $('addPinBtn').onclick = ()=>{ const s=$('pinSelect'); const id=s.value; if(!id) return; const name=s.selectedOptions[0].dataset.name; if((cur.pinterest_accounts||[]).some(p=>p.dolphinProfileId===id)) return; cur.pinterest_accounts=cur.pinterest_accounts||[]; cur.pinterest_accounts.push({dolphinProfileId:id,name}); renderPins(); };
+    $('addPinBtn').onclick = ()=>{ const s=$('pinSelect'); const id=s.value; if(!id) return; addPinAccount(id, s.selectedOptions[0].dataset.name); };
   }catch(e){
     // graceful fallback: manual entry
     picker.innerHTML = `<input id="mProfile" placeholder="Dolphin profile ID"><input id="mLabel" placeholder="label (e.g. Main)"><button class="btn" id="addPinBtn">Add</button>`;
     setStatus('pinStatus','err',`Dolphin not reachable (${esc(e.message)}). Open the Dolphin app + log in, or paste a fresh token in secrets.json. You can add profile IDs manually.`);
-    $('addPinBtn').onclick = ()=>{ const id=$('mProfile').value.trim(); if(!id) return; const name=$('mLabel').value.trim()||('Profile '+id); cur.pinterest_accounts=cur.pinterest_accounts||[]; cur.pinterest_accounts.push({dolphinProfileId:id,name}); renderPins(); $('mProfile').value='';$('mLabel').value=''; };
+    $('addPinBtn').onclick = ()=>{ const id=$('mProfile').value.trim(); if(!id) return; addPinAccount(id, $('mLabel').value.trim()||('Profile '+id)); $('mProfile').value='';$('mLabel').value=''; };
   }
 }
 

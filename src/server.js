@@ -11,6 +11,7 @@ import { getDb } from './db/db.js';
 import { Sites, Topics, KeywordScores } from './db/repos.js';
 import { WordPress } from './shared/wordpress.js';
 import { DolphinAnty } from './shared/dolphin.js';
+import { probePinterestAccount } from './shared/pinterest-probe.js';
 import { secretOpt } from './config.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -69,6 +70,15 @@ app.get('/api/dolphin/profiles', async (req, res) => {
     // back to manual entry; avoids noisy console 500s when Dolphin is offline.
     res.json({ error: e.message });
   }
+});
+
+// Probe a Pinterest account (launches the Dolphin profile briefly → username + boards).
+app.post('/api/pinterest/probe', async (req, res) => {
+  try {
+    const id = (req.body || {}).profileId;
+    if (!id) return res.status(400).json({ ok: false, error: 'profileId required' });
+    res.json(await probePinterestAccount(String(id)));
+  } catch (e) { res.json({ ok: false, error: e.message }); }
 });
 
 // ── read-only helpers for the dashboard ──
