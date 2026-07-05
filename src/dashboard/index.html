@@ -1,0 +1,221 @@
+<style>
+  :root{
+    --canvas:#faf8f6; --surface:#ffffff; --surface-2:#f4f1ee; --hairline:#e9e4de;
+    --ink:#221d20; --muted:#6f6863; --faint:#a49c95;
+    --accent:#c2185b; --accent-soft:#fbe4ee; --accent-press:#a3134d;
+    --good:#0e8a5f; --good-bg:#e4f4ec; --warn:#b47613; --warn-bg:#f8efda; --high:#c0392b; --high-bg:#f8e5e1;
+    --r-card:14px; --r-pill:999px;
+    --sans:"Segoe UI",system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--canvas);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.45;-webkit-font-smoothing:antialiased}
+  .num{font-variant-numeric:tabular-nums}
+  .eyebrow{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
+  a{color:inherit}
+  .app{display:grid;grid-template-columns:232px 1fr;min-height:100vh}
+
+  /* Sidebar */
+  .side{background:var(--surface);border-right:1px solid var(--hairline);padding:22px 16px;display:flex;flex-direction:column;gap:26px}
+  .brand{display:flex;align-items:center;gap:10px;padding:0 6px}
+  .brand .dot{width:26px;height:26px;border-radius:8px;background:var(--accent);display:grid;place-items:center;color:#fff;font-weight:800;font-size:15px}
+  .brand b{font-size:15px;letter-spacing:-.2px}
+  .brand span{display:block;font-size:11px;color:var(--faint);font-weight:500}
+  nav{display:flex;flex-direction:column;gap:2px}
+  nav a{display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:9px;color:var(--muted);text-decoration:none;font-weight:500;font-size:14px}
+  nav a .ic{width:16px;height:16px;opacity:.75}
+  nav a:hover{background:var(--surface-2);color:var(--ink)}
+  nav a.active{background:var(--accent-soft);color:var(--accent-press);font-weight:600}
+  nav a.active .ic{opacity:1}
+  .side .foot{margin-top:auto;font-size:12px;color:var(--faint);padding:0 8px}
+
+  /* Main */
+  main{padding:26px 30px 40px;max-width:1180px}
+  .top{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:22px}
+  .top h1{margin:0;font-size:23px;font-weight:700;letter-spacing:-.4px;text-wrap:balance}
+  .top p{margin:4px 0 0;color:var(--muted);font-size:14px}
+  .btn{border:1px solid var(--hairline);background:var(--surface);color:var(--ink);padding:9px 15px;border-radius:var(--r-pill);font-weight:600;font-size:14px;cursor:pointer;font-family:inherit}
+  .btn:hover{background:var(--surface-2)}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn.primary:hover{background:var(--accent-press)}
+  .btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+  /* KPI row */
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px}
+  .kpi{background:var(--surface);border:1px solid var(--hairline);border-radius:var(--r-card);padding:16px 17px}
+  .kpi .label{font-size:12.5px;color:var(--muted);font-weight:600}
+  .kpi .val{font-size:29px;font-weight:750;letter-spacing:-.5px;margin-top:8px}
+  .kpi .sub{font-size:12px;margin-top:5px;color:var(--faint)}
+  .kpi .sub b{color:var(--good)}
+
+  .card{background:var(--surface);border:1px solid var(--hairline);border-radius:var(--r-card);overflow:hidden}
+  .card-h{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 18px;border-bottom:1px solid var(--hairline)}
+  .card-h h2{margin:0;font-size:15px;font-weight:700;letter-spacing:-.1px}
+  .card-h .hint{font-size:12.5px;color:var(--faint)}
+
+  /* Table */
+  .scroll{overflow-x:auto}
+  table{width:100%;border-collapse:collapse;font-size:14px;min-width:720px}
+  th{text-align:left;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);padding:11px 16px;border-bottom:1px solid var(--hairline);white-space:nowrap}
+  td{padding:13px 16px;border-bottom:1px solid var(--hairline);vertical-align:middle}
+  tbody tr:last-child td{border-bottom:0}
+  tbody tr:hover{background:var(--surface-2)}
+  .kw{font-weight:600}
+  .kw small{display:block;font-weight:500;color:var(--faint);font-size:12px;margin-top:2px}
+
+  /* Opportunity score bar */
+  .score{display:flex;align-items:center;gap:10px;min-width:150px}
+  .bar{flex:1;height:7px;border-radius:var(--r-pill);background:var(--surface-2);overflow:hidden}
+  .bar>i{display:block;height:100%;border-radius:var(--r-pill)}
+  .score b{width:26px;text-align:right;font-weight:700}
+
+  /* chips */
+  .chip{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:var(--r-pill);font-size:12.5px;font-weight:600;white-space:nowrap}
+  .chip.good{background:var(--good-bg);color:var(--good)} .chip.warn{background:var(--warn-bg);color:var(--warn)} .chip.high{background:var(--high-bg);color:var(--high)}
+  .chip .d{width:7px;height:7px;border-radius:50%;background:currentColor}
+  .mom{font-weight:700} .mom.up{color:var(--good)} .mom.flat{color:var(--faint)} .mom.down{color:var(--high)}
+  .win{color:var(--muted);font-size:13px}
+
+  .link-btn{border:1px solid var(--hairline);background:var(--surface);padding:6px 12px;border-radius:var(--r-pill);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+  .link-btn:hover{border-color:var(--accent);color:var(--accent)}
+
+  /* two-up panels */
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:20px}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 18px;border-bottom:1px solid var(--hairline)}
+  .row:last-child{border-bottom:0}
+  .row .t{font-weight:600;font-size:14px}
+  .row .t small{display:block;color:var(--faint);font-weight:500;font-size:12px;margin-top:2px}
+  .pill{padding:3px 10px;border-radius:var(--r-pill);font-size:12px;font-weight:700;letter-spacing:.02em}
+  .pill.pending{background:var(--surface-2);color:var(--muted)}
+  .pill.run{background:var(--accent-soft);color:var(--accent-press)}
+  .pill.done{background:var(--good-bg);color:var(--good)}
+  .pill.err{background:var(--high-bg);color:var(--high)}
+
+  .note{margin-top:22px;font-size:12.5px;color:var(--faint);text-align:center}
+
+  @media(max-width:860px){
+    .app{grid-template-columns:1fr}
+    .side{flex-direction:row;align-items:center;overflow-x:auto;gap:14px;padding:12px 14px}
+    .side .foot{display:none} nav{flex-direction:row}
+    .kpis{grid-template-columns:1fr 1fr} .grid2{grid-template-columns:1fr}
+  }
+</style>
+
+<div class="app">
+  <aside class="side">
+    <div class="brand">
+      <div class="dot">R</div>
+      <div><b>Roundup</b><span>Family Home Studio</span></div>
+    </div>
+    <nav>
+      <a class="active" href="#"><span class="ic">◧</span> Overview</a>
+      <a href="#"><span class="ic">✦</span> Keyword Opportunities</a>
+      <a href="#"><span class="ic">☰</span> Topic Queue</a>
+      <a href="#"><span class="ic">▤</span> Articles</a>
+      <a href="#"><span class="ic">◈</span> Pins &amp; Schedule</a>
+      <a href="#"><span class="ic">⚙</span> Settings</a>
+    </nav>
+    <div class="foot">Local · SQLite · no server<br>Planifier: <b style="color:var(--muted)">off</b></div>
+  </aside>
+
+  <main>
+    <div class="top">
+      <div>
+        <div class="eyebrow">Overview · August window</div>
+        <h1>What's worth writing this week</h1>
+        <p>Keyword opportunities scored from Pinterest Trends + PinClicks, ranked by winnability.</p>
+      </div>
+      <button class="btn primary">+ New Roundup</button>
+    </div>
+
+    <section class="kpis">
+      <div class="kpi"><div class="label">Topics pending</div><div class="val num">7</div><div class="sub">2 approved today</div></div>
+      <div class="kpi"><div class="label">Keywords scored</div><div class="val num">142</div><div class="sub"><b>18</b> high-opportunity</div></div>
+      <div class="kpi"><div class="label">Avg opportunity</div><div class="val num">63</div><div class="sub">of top 25 candidates</div></div>
+      <div class="kpi"><div class="label">Pins scheduled</div><div class="val num">15</div><div class="sub">across 3 accounts</div></div>
+    </section>
+
+    <div class="card">
+      <div class="card-h">
+        <h2>Keyword Opportunities</h2>
+        <span class="hint">Score = demand · momentum · low competition · seasonal timing</span>
+      </div>
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr><th>Keyword</th><th>Opportunity</th><th>Competition</th><th>Momentum</th><th>Peak window</th><th></th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="kw">cold lunch ideas for picky eaters<small>Back to school · long-tail</small></td>
+              <td><div class="score"><div class="bar"><i style="width:88%;background:var(--good)"></i></div><b class="num">88</b></div></td>
+              <td><span class="chip good"><span class="d"></span>Low</span></td>
+              <td><span class="mom up">▲ rising</span></td>
+              <td class="win">Aug 5 – Sep 1</td>
+              <td><button class="link-btn">Approve</button></td>
+            </tr>
+            <tr>
+              <td class="kw">no sandwich lunchbox ideas<small>Back to school · problem-intent</small></td>
+              <td><div class="score"><div class="bar"><i style="width:81%;background:var(--good)"></i></div><b class="num">81</b></div></td>
+              <td><span class="chip good"><span class="d"></span>Low</span></td>
+              <td><span class="mom up">▲ rising</span></td>
+              <td class="win">Aug 1 – Aug 28</td>
+              <td><button class="link-btn">Approve</button></td>
+            </tr>
+            <tr>
+              <td class="kw">early fall porch decor<small>Seasonal transition</small></td>
+              <td><div class="score"><div class="bar"><i style="width:74%;background:var(--good)"></i></div><b class="num">74</b></div></td>
+              <td><span class="chip warn"><span class="d"></span>Medium</span></td>
+              <td><span class="mom up">▲ rising</span></td>
+              <td class="win">Aug 15 – Sep 20</td>
+              <td><button class="link-btn">Approve</button></td>
+            </tr>
+            <tr>
+              <td class="kw">recipes to use up garden zucchini<small>Late-summer produce</small></td>
+              <td><div class="score"><div class="bar"><i style="width:69%;background:var(--warn)"></i></div><b class="num">69</b></div></td>
+              <td><span class="chip warn"><span class="d"></span>Medium</span></td>
+              <td><span class="mom flat">▬ steady</span></td>
+              <td class="win">Aug 1 – Aug 25</td>
+              <td><button class="link-btn">Approve</button></td>
+            </tr>
+            <tr>
+              <td class="kw">small living room decor ideas<small>Evergreen · high demand</small></td>
+              <td><div class="score"><div class="bar"><i style="width:52%;background:var(--warn)"></i></div><b class="num">52</b></div></td>
+              <td><span class="chip high"><span class="d"></span>High</span></td>
+              <td><span class="mom flat">▬ steady</span></td>
+              <td class="win">Year-round</td>
+              <td><button class="link-btn">Approve</button></td>
+            </tr>
+            <tr>
+              <td class="kw">home decor ideas<small>Head term · giants own it</small></td>
+              <td><div class="score"><div class="bar"><i style="width:28%;background:var(--faint)"></i></div><b class="num">28</b></div></td>
+              <td><span class="chip high"><span class="d"></span>High</span></td>
+              <td><span class="mom down">▼ cooling</span></td>
+              <td class="win">Year-round</td>
+              <td><button class="link-btn">Skip</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <div class="card-h"><h2>Topic Queue</h2><span class="hint">7 items</span></div>
+        <div class="row"><div class="t">25 Cold Lunch Ideas for Picky Eaters<small>roundup · approved 2:14 pm</small></div><span class="pill pending">pending</span></div>
+        <div class="row"><div class="t">30 Early Fall Porch Decor Ideas<small>roundup · researching images</small></div><span class="pill run">researching</span></div>
+        <div class="row"><div class="t">25 No-Sandwich Lunchbox Ideas<small>roundup · draft on WordPress</small></div><span class="pill done">drafted</span></div>
+        <div class="row"><div class="t">40 Small Living Room Ideas<small>roundup · queued</small></div><span class="pill pending">pending</span></div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><h2>Recent Jobs</h2><span class="hint">last 24h</span></div>
+        <div class="row"><div class="t">Keyword research · back-to-school<small>142 scored · 4m 12s</small></div><span class="pill done">done</span></div>
+        <div class="row"><div class="t">Roundup · No-Sandwich Lunchbox<small>25 items · title-card + WP draft</small></div><span class="pill done">done</span></div>
+        <div class="row"><div class="t">Roundup · Early Fall Porch Decor<small>picking images (18/30)</small></div><span class="pill run">running</span></div>
+        <div class="row"><div class="t">Pin batch · acc2<small>PinClicks login expired</small></div><span class="pill err">error</span></div>
+      </div>
+    </div>
+
+    <p class="note">Sample data · design preview for roundup-automator. Opportunity scores are estimates, not guarantees.</p>
+  </main>
+</div>
