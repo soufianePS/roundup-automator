@@ -151,6 +151,22 @@ Full definition in `src/db/schema.sql`. Tables:
 
 ---
 
+## 7b. Skills & plugins setup
+
+- The **`anthropic-agent-skills` marketplace is global** (`~/.claude/settings.json`
+  → `extraKnownMarketplaces`). It's already available here — do NOT re-add it.
+- To use a plugin's skills IN this project (and share with the friend via git),
+  enable it at **project scope**: run `/plugin` in this folder, enable the plugin,
+  choose "project" scope. That writes `.claude/settings.json`:
+  ```json
+  { "enabledPlugins": { "wp-rest-api@anthropic-agent-skills": true } }
+  ```
+- The WordPress skills recipe-automator uses (`wp-rest-api`, `wp-wpcli-and-ops`, …)
+  come from a separate `skills-lock.json` (source: `WordPress/agent-skills`), not the
+  marketplace. For this app the useful one is **`wp-rest-api`** (WordPress uploads).
+- `.claude/` is typically gitignored for local settings; enable plugins at PROJECT
+  scope if you want them committed/shared with your friend.
+
 ## 8. Related knowledge (recipe-automator memory, reusable)
 
 - `flow-network-api-replay` — reverse-engineer a Google web app's API via in-page
