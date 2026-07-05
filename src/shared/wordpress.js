@@ -4,19 +4,18 @@
  * Uses global fetch (Node 18+). Sharp is optional (WebP conversion) — loaded
  * lazily so the base app runs without it installed.
  *
- * Credentials come from config/secrets.json → secret('wordpress').
+ * MULTI-SITE: every method takes a `site` object from the sites table:
+ *   { wp_url, wp_username, wp_app_password }.
  */
 import { Logger } from './logger.js';
-import { secret } from '../config.js';
 
 const WEBP_QUALITY = 90;
 
-function _wp() {
-  const w = secret('wordpress');
-  if (!w.url || !w.username || !w.appPassword) {
-    throw new Error('WordPress creds incomplete in config/secrets.json (need url, username, appPassword)');
+function _wp(site) {
+  if (!site || !site.wp_url || !site.wp_username || !site.wp_app_password) {
+    throw new Error('WordPress creds incomplete for site (need wp_url, wp_username, wp_app_password)');
   }
-  return w;
+  return { url: site.wp_url.replace(/\/+$/, ''), username: site.wp_username, appPassword: site.wp_app_password };
 }
 function _auth(w) { return 'Basic ' + Buffer.from(`${w.username}:${w.appPassword}`).toString('base64'); }
 
@@ -40,8 +39,8 @@ async function _fetchRetry(url, options, maxRetries = 4) {
 
 export const WordPress = {
   /** Upload an image buffer (optionally WebP-converted) → { id, url }. */
-  async uploadImage(buffer, filename, seo = {}) {
-    const w = _wp();
+  async uploadImage(site, buffer, filename, seo = {}) {
+    const w = _wp(site);
     let buf = buffer, name = filename;
     try {
       const sharp = (await import('sharp')).default;
@@ -72,9 +71,9 @@ export const WordPress = {
   },
 
   /** Resolve a category name → id (creates it if missing). */
-  async categoryId(name) {
+  async categoryId(site, name) {
     if (!name) return null;
-    const w = _wp();
+    const w = _wp(site);
     const q = await _fetchRetry(`${w.url}/wp-json/wp/v2/categories?search=${encodeURIComponent(name)}`, { headers: { Authorization: _auth(w) } });
     if (q.ok) { const list = await q.json(); const hit = list.find(c => c.name.toLowerCase() === name.toLowerCase()); if (hit) return hit.id; }
     const c = await _fetchRetry(`${w.url}/wp-json/wp/v2/categories`, {
@@ -85,12 +84,12 @@ export const WordPress = {
   },
 
   /** Create a draft post → { id, link }. */
-  async createDraft(title, contentHtml, { featuredImageId = 0, slug = '', categoryName = '', meta = {} } = {}) {
-    const w = _wp();
+  async createDraft(site, title, contentHtml, { featuredImageId = 0, slug = '', categoryName = '', meta = {} } = {}) {
+    const w = _wp(site);
     const body = { title, content: contentHtml, status: 'draft' };
     if (slug) body.slug = slug;
     if (featuredImageId) body.featured_media = featuredImageId;
-    if (categoryName) { const id = await this.categoryId(categoryName); if (id) body.categories = [id]; }
+    if (categoryName) { const id = await this.categoryId(site, categoryName); if (id) body.categories = [id]; }
     if (meta && Object.keys(meta).length) body.meta = meta;
 
     const resp = await _fetchRetry(`${w.url}/wp-json/wp/v2/posts`, {

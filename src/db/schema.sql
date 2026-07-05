@@ -2,6 +2,23 @@
 -- Local file: data/roundup.db (gitignored). Use WAL mode + transactions.
 -- PRAGMA journal_mode=WAL;
 
+-- Sites: one row per blog you manage (multi-site). Per-site WordPress creds +
+-- categories + Pinterest accounts. Shared creds (Dolphin token, PinClicks,
+-- Gemini) live in config/secrets.json, not here.
+CREATE TABLE IF NOT EXISTS sites (
+  id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+  name                TEXT NOT NULL,
+  slug                TEXT,
+  wp_url              TEXT,
+  wp_username         TEXT,
+  wp_app_password     TEXT,
+  categories          TEXT,   -- JSON array of category names
+  pinterest_accounts  TEXT,   -- JSON array of {id, label, dolphinProfileId}
+  active              INTEGER DEFAULT 0,  -- 1 = currently selected site
+  created_at          TEXT DEFAULT (datetime('now')),
+  updated_at          TEXT DEFAULT (datetime('now'))
+);
+
 -- Input queue: what to research/write next.
 CREATE TABLE IF NOT EXISTS topics (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,

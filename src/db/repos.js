@@ -7,6 +7,44 @@ import { getDb } from './db.js';
 
 const db = () => getDb();
 
+const _json = (v, fallback) => { try { return v ? JSON.parse(v) : fallback; } catch { return fallback; } };
+function _rowToSite(r) {
+  if (!r) return null;
+  return { ...r, categories: _json(r.categories, []), pinterest_accounts: _json(r.pinterest_accounts, []), active: !!r.active };
+}
+
+export const Sites = {
+  add(s) {
+    return db().prepare(`INSERT INTO sites
+      (name, slug, wp_url, wp_username, wp_app_password, categories, pinterest_accounts, active)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 0)`).run(
+      s.name, s.slug ?? null, s.wp_url ?? null, s.wp_username ?? null, s.wp_app_password ?? null,
+      JSON.stringify(s.categories ?? []), JSON.stringify(s.pinterest_accounts ?? [])
+    ).lastInsertRowid;
+  },
+  list() { return db().prepare('SELECT * FROM sites ORDER BY id ASC').all().map(_rowToSite); },
+  get(id) { return _rowToSite(db().prepare('SELECT * FROM sites WHERE id=?').get(id)); },
+  getActive() { return _rowToSite(db().prepare('SELECT * FROM sites WHERE active=1 LIMIT 1').get()); },
+  update(id, s) {
+    const cur = db().prepare('SELECT * FROM sites WHERE id=?').get(id);
+    if (!cur) return false;
+    const m = { ...cur, ...s };
+    db().prepare(`UPDATE sites SET name=?, slug=?, wp_url=?, wp_username=?, wp_app_password=?,
+      categories=?, pinterest_accounts=?, updated_at=datetime('now') WHERE id=?`).run(
+      m.name, m.slug ?? null, m.wp_url ?? null, m.wp_username ?? null, m.wp_app_password ?? null,
+      JSON.stringify(s.categories ?? _json(cur.categories, [])),
+      JSON.stringify(s.pinterest_accounts ?? _json(cur.pinterest_accounts, [])), id
+    );
+    return true;
+  },
+  remove(id) { db().prepare('DELETE FROM sites WHERE id=?').run(id); },
+  setActive(id) {
+    const tx = db();
+    tx.prepare('UPDATE sites SET active=0').run();
+    tx.prepare('UPDATE sites SET active=1 WHERE id=?').run(id);
+  },
+};
+
 export const Topics = {
   add(keyword, title = null, type = 'roundup', priority = 0) {
     return db().prepare(

@@ -1,0 +1,176 @@
+<style>
+  :root{
+    --canvas:#faf8f6;--surface:#fff;--surface-2:#f4f1ee;--hairline:#e9e4de;
+    --ink:#221d20;--muted:#6f6863;--faint:#a49c95;
+    --accent:#c2185b;--accent-soft:#fbe4ee;--accent-press:#a3134d;
+    --good:#0e8a5f;--good-bg:#e4f4ec;--high:#c0392b;--high-bg:#f8e5e1;
+    --r-card:14px;--r-pill:999px;--sans:"Segoe UI",system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--canvas);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.45}
+  .app{display:grid;grid-template-columns:232px 1fr;min-height:100vh}
+  .side{background:var(--surface);border-right:1px solid var(--hairline);padding:22px 16px;display:flex;flex-direction:column;gap:26px}
+  .brand{display:flex;align-items:center;gap:10px;padding:0 6px}
+  .brand .dot{width:26px;height:26px;border-radius:8px;background:var(--accent);display:grid;place-items:center;color:#fff;font-weight:800}
+  .brand b{font-size:15px}.brand span{display:block;font-size:11px;color:var(--faint)}
+  nav{display:flex;flex-direction:column;gap:2px}
+  nav a{display:flex;gap:11px;padding:9px 11px;border-radius:9px;color:var(--muted);text-decoration:none;font-weight:500;font-size:14px}
+  nav a:hover{background:var(--surface-2);color:var(--ink)}
+  nav a.active{background:var(--accent-soft);color:var(--accent-press);font-weight:600}
+  main{padding:26px 30px 40px;max-width:1040px}
+  .eyebrow{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
+  h1{margin:4px 0 2px;font-size:23px;font-weight:700;letter-spacing:-.4px}
+  .lead{color:var(--muted);margin:0 0 22px;font-size:14px}
+  .btn{border:1px solid var(--hairline);background:var(--surface);color:var(--ink);padding:9px 15px;border-radius:var(--r-pill);font-weight:600;font-size:14px;cursor:pointer;font-family:inherit}
+  .btn:hover{background:var(--surface-2)} .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn.primary:hover{background:var(--accent-press)} .btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .btn.sm{padding:6px 12px;font-size:13px} .btn.danger:hover{border-color:var(--high);color:var(--high)}
+  .card{background:var(--surface);border:1px solid var(--hairline);border-radius:var(--r-card);overflow:hidden;margin-bottom:20px}
+  .card-h{display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid var(--hairline)}
+  .card-h h2{margin:0;font-size:15px;font-weight:700}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th{text-align:left;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);padding:11px 16px;border-bottom:1px solid var(--hairline)}
+  td{padding:12px 16px;border-bottom:1px solid var(--hairline);vertical-align:middle}
+  tbody tr:last-child td{border-bottom:0}
+  .name{font-weight:600}.url{color:var(--muted);font-size:13px}
+  .badge{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:var(--r-pill);font-size:12px;font-weight:700}
+  .badge.on{background:var(--good-bg);color:var(--good)} .badge.off{background:var(--surface-2);color:var(--muted)}
+  .actions{display:flex;gap:8px;justify-content:flex-end}
+  .empty{padding:34px;text-align:center;color:var(--faint)}
+  /* form */
+  .form{padding:18px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .field{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+  .field.full{grid-column:1/-1}
+  label{font-size:12.5px;font-weight:600;color:var(--muted)}
+  input,textarea{font-family:inherit;font-size:14px;padding:9px 11px;border:1px solid var(--hairline);border-radius:9px;background:var(--surface);color:var(--ink)}
+  input:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:0;border-color:transparent}
+  .hint{font-size:12px;color:var(--faint)}
+  .form-foot{display:flex;gap:10px;justify-content:flex-end;margin-top:6px}
+  .hidden{display:none}
+  @media(max-width:860px){.app{grid-template-columns:1fr}.side{flex-direction:row;overflow-x:auto}.grid{grid-template-columns:1fr}}
+</style>
+
+<div class="app">
+  <aside class="side">
+    <div class="brand"><div class="dot">R</div><div><b>Roundup</b><span>Family Home Studio</span></div></div>
+    <nav>
+      <a href="/">◧ Overview</a>
+      <a href="/">✦ Keyword Opportunities</a>
+      <a href="/">☰ Topic Queue</a>
+      <a class="active" href="/settings">⚙ Settings</a>
+    </nav>
+  </aside>
+
+  <main>
+    <div class="eyebrow">Settings</div>
+    <h1>Sites</h1>
+    <p class="lead">Add and edit the blogs this app manages. WordPress credentials are stored per-site (local SQLite, never committed). Shared credentials (Dolphin, PinClicks, Gemini) live in config/secrets.json.</p>
+
+    <div class="card">
+      <div class="card-h"><h2>Your sites</h2><button class="btn primary" id="addBtn">+ Add site</button></div>
+      <table id="sitesTable">
+        <thead><tr><th>Name</th><th>WordPress URL</th><th>Categories</th><th>Pinterest</th><th>Status</th><th></th></tr></thead>
+        <tbody id="sitesBody"></tbody>
+      </table>
+      <div class="empty hidden" id="empty">No sites yet. Click <b>Add site</b> to create your first one.</div>
+    </div>
+
+    <div class="card hidden" id="formCard">
+      <div class="card-h"><h2 id="formTitle">Add site</h2></div>
+      <div class="form">
+        <input type="hidden" id="f_id">
+        <div class="grid">
+          <div class="field"><label>Site name</label><input id="f_name" placeholder="Family Home Blog"></div>
+          <div class="field"><label>Slug</label><input id="f_slug" placeholder="family-home"></div>
+          <div class="field full"><label>WordPress URL</label><input id="f_wp_url" placeholder="https://yourfamilyblog.com"></div>
+          <div class="field"><label>WP username</label><input id="f_wp_username" placeholder="admin"></div>
+          <div class="field"><label>WP application password</label><input id="f_wp_app_password" placeholder="xxxx xxxx xxxx xxxx"></div>
+          <div class="field full"><label>Categories (comma-separated)</label><input id="f_categories" placeholder="Home Decor, DIY & Crafts, Holidays, Lifestyle"></div>
+          <div class="field full"><label>Pinterest accounts (one per line: label = dolphinProfileId)</label><textarea id="f_pins" rows="3" placeholder="Main = 793614953&#10;Second = 800112233"></textarea><span class="hint">Dolphin profile IDs — same Dolphin account as recipe-automator.</span></div>
+        </div>
+        <div class="form-foot"><button class="btn" id="cancelBtn">Cancel</button><button class="btn primary" id="saveBtn">Save site</button></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+  const $ = id => document.getElementById(id);
+  const body = $('sitesBody'), empty = $('empty'), formCard = $('formCard');
+  const esc = s => (s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+  async function load() {
+    const sites = await fetch('/api/sites').then(r => r.json());
+    body.innerHTML = '';
+    empty.classList.toggle('hidden', sites.length > 0);
+    for (const s of sites) {
+      const pins = (s.pinterest_accounts||[]).length;
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="name">${esc(s.name)}</td>
+        <td class="url">${esc(s.wp_url||'—')}</td>
+        <td>${(s.categories||[]).length}</td>
+        <td>${pins} account${pins===1?'':'s'}</td>
+        <td>${s.active ? '<span class="badge on">● active</span>' : '<span class="badge off">inactive</span>'}</td>
+        <td class="actions">
+          ${s.active ? '' : `<button class="btn sm" data-act="activate" data-id="${s.id}">Use</button>`}
+          <button class="btn sm" data-act="edit" data-id="${s.id}">Edit</button>
+          <button class="btn sm danger" data-act="del" data-id="${s.id}">Delete</button>
+        </td>`;
+      tr._site = s;
+      body.appendChild(tr);
+    }
+  }
+
+  function openForm(site) {
+    formCard.classList.remove('hidden');
+    $('formTitle').textContent = site ? 'Edit site' : 'Add site';
+    $('f_id').value = site?.id || '';
+    $('f_name').value = site?.name || '';
+    $('f_slug').value = site?.slug || '';
+    $('f_wp_url').value = site?.wp_url || '';
+    $('f_wp_username').value = site?.wp_username || '';
+    $('f_wp_app_password').value = site?.wp_app_password || '';
+    $('f_categories').value = (site?.categories||[]).join(', ');
+    $('f_pins').value = (site?.pinterest_accounts||[]).map(p => `${p.label||p.id} = ${p.dolphinProfileId||''}`).join('\n');
+    formCard.scrollIntoView({behavior:'smooth'});
+  }
+
+  function collect() {
+    const cats = $('f_categories').value.split(',').map(s=>s.trim()).filter(Boolean);
+    const pins = $('f_pins').value.split('\n').map(l=>l.trim()).filter(Boolean).map((l,i)=>{
+      const [label, id] = l.split('=').map(x=>x.trim());
+      return { id: 'acc'+(i+1), label: label||('acc'+(i+1)), dolphinProfileId: id||'' };
+    });
+    return {
+      name: $('f_name').value.trim(), slug: $('f_slug').value.trim(),
+      wp_url: $('f_wp_url').value.trim(), wp_username: $('f_wp_username').value.trim(),
+      wp_app_password: $('f_wp_app_password').value.trim(),
+      categories: cats, pinterest_accounts: pins,
+    };
+  }
+
+  $('addBtn').onclick = () => openForm(null);
+  $('cancelBtn').onclick = () => formCard.classList.add('hidden');
+  $('saveBtn').onclick = async () => {
+    const data = collect();
+    if (!data.name) { alert('Site name is required'); return; }
+    const id = $('f_id').value;
+    const r = await fetch(id ? '/api/sites/'+id : '/api/sites', {
+      method: id ? 'PUT' : 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data),
+    }).then(r=>r.json());
+    if (r.error) { alert('Error: '+r.error); return; }
+    formCard.classList.add('hidden'); load();
+  };
+
+  body.onclick = async (e) => {
+    const btn = e.target.closest('button[data-act]'); if (!btn) return;
+    const id = btn.dataset.id, act = btn.dataset.act;
+    if (act === 'edit') { openForm(e.target.closest('tr')._site); return; }
+    if (act === 'activate') { await fetch('/api/sites/'+id+'/activate',{method:'POST'}); load(); return; }
+    if (act === 'del') { if (confirm('Delete this site?')) { await fetch('/api/sites/'+id,{method:'DELETE'}); load(); } }
+  };
+
+  load();
+</script>
