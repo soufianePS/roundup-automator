@@ -9,6 +9,9 @@ import { fileURLToPath } from 'url';
 import { Logger } from './shared/logger.js';
 import { getDb } from './db/db.js';
 import { Sites, Topics, KeywordScores } from './db/repos.js';
+import { WordPress } from './shared/wordpress.js';
+import { DolphinAnty } from './shared/dolphin.js';
+import { secretOpt } from './config.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DASH = join(__dirname, 'dashboard');
@@ -41,6 +44,31 @@ app.post('/api/sites', (req, res) => { try { res.json({ ok: true, id: Sites.add(
 app.put('/api/sites/:id', (req, res) => { try { Sites.update(Number(req.params.id), req.body || {}); res.json({ ok: true }); } catch (e) { res.status(500).json({ error: e.message }); } });
 app.delete('/api/sites/:id', (req, res) => { try { Sites.remove(Number(req.params.id)); res.json({ ok: true }); } catch (e) { res.status(500).json({ error: e.message }); } });
 app.post('/api/sites/:id/activate', (req, res) => { try { Sites.setActive(Number(req.params.id)); res.json({ ok: true }); } catch (e) { res.status(500).json({ error: e.message }); } });
+
+// ── Auto-discovery ──
+// Connect a WP site with just url+user+app-password and fetch what we need.
+app.post('/api/wp/probe', async (req, res) => {
+  try {
+    const b = req.body || {};
+    const site = { wp_url: b.wp_url, wp_username: b.wp_username, wp_app_password: b.wp_app_password };
+    res.json(await WordPress.probe(site));
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// List all Dolphin Anty profiles (cloud API — no desktop app needed) for the dropdown.
+app.get('/api/dolphin/profiles', async (req, res) => {
+  try {
+    const cfg = secretOpt('dolphinAnty');
+    if (!cfg?.apiToken) return res.status(400).json({ error: 'Dolphin token not set in config/secrets.json' });
+    const d = new DolphinAnty({ dolphinAnty: cfg });
+    const list = await d.listProfiles({ limit: 100 });
+    res.json((Array.isArray(list) ? list : []).map(p => ({ id: String(p.id), name: p.name || p.title || ('Profile ' + p.id) })));
+  } catch (e) {
+    // Return 200 with an error field (not 500) — the UI expects this and falls
+    // back to manual entry; avoids noisy console 500s when Dolphin is offline.
+    res.json({ error: e.message });
+  }
+});
 
 // ── read-only helpers for the dashboard ──
 app.get('/api/topics', (req, res) => { try { res.json(Topics.list()); } catch (e) { res.status(500).json({ error: e.message }); } });

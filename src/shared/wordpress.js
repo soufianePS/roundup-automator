@@ -38,6 +38,49 @@ async function _fetchRetry(url, options, maxRetries = 4) {
 }
 
 export const WordPress = {
+  /** Authors/users (needs authentication + edit context). */
+  async getUsers(site) {
+    const w = _wp(site);
+    const r = await _fetchRetry(`${w.url}/wp-json/wp/v2/users?per_page=100&context=edit`, { headers: { Authorization: _auth(w) } });
+    if (!r.ok) throw new Error(`users ${r.status}`);
+    return (await r.json()).map(u => ({ id: u.id, name: u.name, slug: u.slug }));
+  },
+
+  /** Categories (public). */
+  async getCategories(site) {
+    const w = _wp(site);
+    const r = await _fetchRetry(`${w.url}/wp-json/wp/v2/categories?per_page=100&orderby=count&order=desc`, { headers: { Authorization: _auth(w) } });
+    if (!r.ok) throw new Error(`categories ${r.status}`);
+    return (await r.json()).map(c => ({ id: c.id, name: c.name, count: c.count }));
+  },
+
+  /**
+   * Connect + auto-discover everything we need from a WP site given only
+   * url + username + application password: site name, authors, categories.
+   */
+  async probe(site) {
+    const w = _wp(site);
+    // Validate auth first — fail FAST (single attempt, short timeout) so the
+    // "Connect" button gives quick feedback on a bad URL/creds.
+    let authed = false, me = null;
+    try {
+      const r = await fetch(`${w.url}/wp-json/wp/v2/users/me?context=edit`,
+        { headers: { Authorization: _auth(w) }, signal: AbortSignal.timeout(9000) });
+      authed = r.ok; if (r.ok) me = await r.json();
+    } catch (e) {
+      const msg = /timeout|abort/i.test(e.message) ? 'timed out' : e.message;
+      return { ok: false, error: `Could not reach ${w.url} (${msg})` };
+    }
+    if (!authed) return { ok: false, error: 'Authentication failed — check username / application password.' };
+
+    let siteName = '';
+    try { const r = await _fetchRetry(`${w.url}/wp-json`, { headers: { Authorization: _auth(w) } }); if (r.ok) siteName = (await r.json()).name || ''; } catch {}
+    const users = await this.getUsers(site).catch(() => (me ? [{ id: me.id, name: me.name, slug: me.slug }] : []));
+    const categories = await this.getCategories(site).catch(() => []);
+    Logger.success(`[WP] connected ${w.url} — "${siteName}", ${users.length} authors, ${categories.length} categories`);
+    return { ok: true, siteName, users, categories };
+  },
+
   /** Upload an image buffer (optionally WebP-converted) → { id, url }. */
   async uploadImage(site, buffer, filename, seo = {}) {
     const w = _wp(site);

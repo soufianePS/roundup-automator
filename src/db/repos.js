@@ -10,15 +10,17 @@ const db = () => getDb();
 const _json = (v, fallback) => { try { return v ? JSON.parse(v) : fallback; } catch { return fallback; } };
 function _rowToSite(r) {
   if (!r) return null;
-  return { ...r, categories: _json(r.categories, []), pinterest_accounts: _json(r.pinterest_accounts, []), active: !!r.active };
+  return { ...r, categories: _json(r.categories, []), pinterest_accounts: _json(r.pinterest_accounts, []),
+    wp_authors: _json(r.wp_authors, []), active: !!r.active };
 }
 
 export const Sites = {
   add(s) {
     return db().prepare(`INSERT INTO sites
-      (name, slug, wp_url, wp_username, wp_app_password, categories, pinterest_accounts, active)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 0)`).run(
+      (name, slug, wp_url, wp_username, wp_app_password, wp_site_name, wp_authors, categories, pinterest_accounts, active)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`).run(
       s.name, s.slug ?? null, s.wp_url ?? null, s.wp_username ?? null, s.wp_app_password ?? null,
+      s.wp_site_name ?? null, JSON.stringify(s.wp_authors ?? []),
       JSON.stringify(s.categories ?? []), JSON.stringify(s.pinterest_accounts ?? [])
     ).lastInsertRowid;
   },
@@ -30,8 +32,10 @@ export const Sites = {
     if (!cur) return false;
     const m = { ...cur, ...s };
     db().prepare(`UPDATE sites SET name=?, slug=?, wp_url=?, wp_username=?, wp_app_password=?,
-      categories=?, pinterest_accounts=?, updated_at=datetime('now') WHERE id=?`).run(
+      wp_site_name=?, wp_authors=?, categories=?, pinterest_accounts=?, updated_at=datetime('now') WHERE id=?`).run(
       m.name, m.slug ?? null, m.wp_url ?? null, m.wp_username ?? null, m.wp_app_password ?? null,
+      s.wp_site_name ?? cur.wp_site_name ?? null,
+      JSON.stringify(s.wp_authors ?? _json(cur.wp_authors, [])),
       JSON.stringify(s.categories ?? _json(cur.categories, [])),
       JSON.stringify(s.pinterest_accounts ?? _json(cur.pinterest_accounts, [])), id
     );

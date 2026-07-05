@@ -23,7 +23,15 @@ export function getDb() {
   _db = new DatabaseSync(DB_PATH);
   _db.exec('PRAGMA journal_mode = WAL;');
   _db.exec(readFileSync(SCHEMA_PATH, 'utf8')); // idempotent (CREATE IF NOT EXISTS)
+  _migrate(_db); // add columns introduced after a db already existed
   return _db;
+}
+
+// Additive migrations — each ALTER is idempotent (ignored if the column exists).
+function _migrate(db) {
+  const add = (table, col, decl) => { try { db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${decl}`); } catch { /* exists */ } };
+  add('sites', 'wp_site_name', 'TEXT');
+  add('sites', 'wp_authors', 'TEXT');
 }
 
 export function tables() {

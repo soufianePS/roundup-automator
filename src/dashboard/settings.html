@@ -15,117 +15,144 @@
       <div>
         <div class="eyebrow">Settings</div>
         <h1>Sites</h1>
-        <p class="lead">Add and edit the blogs this app manages. WordPress credentials are stored per-site (local SQLite, never committed). Shared credentials — Dolphin, PinClicks, Gemini — live in config/secrets.json.</p>
+        <p class="lead">Connect a WordPress site with just its login + application password — the app fetches your authors and categories automatically. Pick Pinterest accounts from your Dolphin profiles.</p>
       </div>
-      <button class="btn primary" id="addBtn">Add site <span class="cap">+</span></button>
     </div>
 
-    <div class="card"><div class="core">
-      <div class="card-h"><h2>Your sites</h2><span class="hint" id="count"></span></div>
-      <div class="scroll">
-        <table id="sitesTable">
-          <thead><tr><th>Name</th><th>WordPress URL</th><th>Categories</th><th>Pinterest</th><th>Status</th><th></th></tr></thead>
-          <tbody id="sitesBody"></tbody>
-        </table>
-      </div>
-      <div class="empty hidden" id="empty">No sites yet. Click <b>Add site</b> to create your first one.</div>
-    </div></div>
+    <div class="settings-wrap">
+      <!-- left: sites list -->
+      <div class="card site-list"><div class="core">
+        <div id="siteList"></div>
+        <div class="site-item new" id="newBtn"><span class="ic">＋</span> New site</div>
+      </div></div>
 
-    <div class="card hidden" id="formCard"><div class="core">
-      <div class="card-h"><h2 id="formTitle">Add site</h2></div>
-      <div class="form">
-        <input type="hidden" id="f_id">
-        <div class="grid">
-          <div class="field"><label>Site name</label><input id="f_name" placeholder="Family Home Blog"></div>
-          <div class="field"><label>Slug</label><input id="f_slug" placeholder="family-home"></div>
-          <div class="field full"><label>WordPress URL</label><input id="f_wp_url" placeholder="https://yourfamilyblog.com"></div>
-          <div class="field"><label>WP username</label><input id="f_wp_username" placeholder="admin"></div>
-          <div class="field"><label>WP application password</label><input id="f_wp_app_password" placeholder="xxxx xxxx xxxx xxxx"></div>
-          <div class="field full"><label>Categories (comma-separated)</label><input id="f_categories" placeholder="Home Decor, DIY &amp; Crafts, Holidays, Lifestyle"></div>
-          <div class="field full"><label>Pinterest accounts — one per line: label = dolphinProfileId</label><textarea id="f_pins" rows="3" placeholder="Main = 793614953&#10;Second = 800112233"></textarea><span class="fhint">Dolphin profile IDs — same Dolphin account as recipe-automator.</span></div>
+      <!-- right: editor -->
+      <div class="card" id="editorCard" style="display:none"><div class="core">
+        <div class="editor-head">
+          <input id="f_name" placeholder="Site name (e.g. Family Home Blog)">
+          <div class="grp">
+            <button class="btn sm" id="useBtn">Use</button>
+            <button class="btn sm danger" id="delBtn">Delete</button>
+            <button class="btn primary sm" id="saveBtn">Save</button>
+          </div>
         </div>
-        <div class="form-foot"><button class="btn" id="cancelBtn">Cancel</button><button class="btn primary" id="saveBtn">Save site</button></div>
-      </div>
-    </div></div>
+
+        <div class="section">
+          <h3>WordPress connection</h3>
+          <p class="desc">Enter the URL, your username, and a WordPress <b>application password</b> (Users → Profile → Application Passwords). Then Connect — we validate and pull your authors + categories.</p>
+          <div class="grid">
+            <div class="field full"><label>WordPress URL</label><input id="f_wp_url" placeholder="https://yourfamilyblog.com"></div>
+            <div class="field"><label>Username</label><input id="f_wp_username" placeholder="admin"></div>
+            <div class="field"><label>Application password</label><input id="f_wp_app_password" placeholder="xxxx xxxx xxxx xxxx"></div>
+          </div>
+          <button class="btn" id="connectBtn">Connect &amp; fetch</button>
+          <span class="status idle" id="wpStatus" style="display:none"></span>
+          <div class="chips" id="wpDiscovered"></div>
+        </div>
+
+        <div class="section">
+          <h3>Pinterest accounts</h3>
+          <p class="desc">Pick from your Dolphin Anty profiles. Each becomes a posting account for this site.</p>
+          <div class="picker" id="pinPicker"></div>
+          <span class="status idle" id="pinStatus" style="display:none"></span>
+          <div class="chips" id="pinChips"></div>
+        </div>
+      </div></div>
+    </div>
   </main>
 </div>
 
 <script>
-  const $ = id => document.getElementById(id);
-  const body = $('sitesBody'), empty = $('empty'), formCard = $('formCard');
-  const esc = s => (s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const $ = id => document.getElementById(id);
+const esc = s => (s||'').toString().replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let sites = [], cur = null, dolphinProfiles = null;
 
-  async function load() {
-    const sites = await fetch('/api/sites').then(r => r.json());
-    body.innerHTML = '';
-    empty.classList.toggle('hidden', sites.length > 0);
-    $('count').textContent = sites.length + (sites.length === 1 ? ' site' : ' sites');
-    for (const s of sites) {
-      const pins = (s.pinterest_accounts||[]).length;
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td class="kw">${esc(s.name)}</td>
-        <td class="win">${esc(s.wp_url||'—')}</td>
-        <td class="num">${(s.categories||[]).length}</td>
-        <td class="win">${pins} account${pins===1?'':'s'}</td>
-        <td>${s.active ? '<span class="badge on"><span class="d" style="width:6px;height:6px;border-radius:50%;background:currentColor;display:inline-block"></span>active</span>' : '<span class="badge off">inactive</span>'}</td>
-        <td class="actions">
-          ${s.active ? '' : `<button class="btn sm" data-act="activate" data-id="${s.id}">Use</button>`}
-          <button class="btn sm" data-act="edit" data-id="${s.id}">Edit</button>
-          <button class="btn sm danger" data-act="del" data-id="${s.id}">Delete</button>
-        </td>`;
-      tr._site = s;
-      body.appendChild(tr);
-    }
+function blank(){ return { id:null, name:'', slug:'', wp_url:'', wp_username:'', wp_app_password:'', wp_site_name:'', wp_authors:[], categories:[], pinterest_accounts:[], active:false }; }
+
+async function loadSites(){
+  sites = await fetch('/api/sites').then(r=>r.json());
+  const list = $('siteList');
+  list.innerHTML = sites.map(s=>`<div class="site-item ${cur&&cur.id===s.id?'sel':''}" data-id="${s.id}">
+      <span>${esc(s.name)||'(untitled)'}</span>${s.active?'<span class="dotmark" title="active"></span>':''}</div>`).join('');
+}
+
+function renderEditor(){
+  $('editorCard').style.display = cur ? '' : 'none';
+  if(!cur) return;
+  $('f_name').value = cur.name||''; $('f_wp_url').value = cur.wp_url||'';
+  $('f_wp_username').value = cur.wp_username||''; $('f_wp_app_password').value = cur.wp_app_password||'';
+  $('useBtn').style.display = cur.id && !cur.active ? '' : 'none';
+  $('delBtn').style.display = cur.id ? '' : 'none';
+  // WP discovered
+  renderDiscovered();
+  renderPins();
+  // status reflects saved connection
+  if(cur.wp_site_name){ setStatus('wpStatus','ok',`connected · ${esc(cur.wp_site_name)} · ${(cur.wp_authors||[]).length} authors · ${(cur.categories||[]).length} categories`); }
+  else { $('wpStatus').style.display='none'; }
+}
+function renderDiscovered(){
+  const el = $('wpDiscovered'); const cats=cur.categories||[], auth=cur.wp_authors||[];
+  el.innerHTML = '';
+  if(auth.length){ el.innerHTML += `<span class="lbl">Authors</span>` + auth.map(a=>`<span class="chip-static">${esc(a.name)}</span>`).join(''); }
+  if(cats.length){ el.innerHTML += `<span class="lbl">Categories</span>` + cats.map(c=>`<span class="chip-static">${esc(c.name)}${c.count!=null?` · ${c.count}`:''}</span>`).join(''); }
+}
+function renderPins(){
+  $('pinChips').innerHTML = (cur.pinterest_accounts||[]).map((p,i)=>
+    `<span class="chip-x">${esc(p.name||p.dolphinProfileId)} <button data-rm="${i}">×</button></span>`).join('');
+}
+function setStatus(id,kind,text){ const el=$(id); el.className='status '+kind; el.textContent=text; el.style.display='inline-flex'; }
+
+function pull(){ cur.name=$('f_name').value.trim(); cur.wp_url=$('f_wp_url').value.trim(); cur.wp_username=$('f_wp_username').value.trim(); cur.wp_app_password=$('f_wp_app_password').value.trim(); }
+
+async function connectWp(){
+  pull();
+  if(!cur.wp_url||!cur.wp_username||!cur.wp_app_password){ setStatus('wpStatus','err','enter URL, username and application password'); return; }
+  setStatus('wpStatus','busy','connecting…');
+  const r = await fetch('/api/wp/probe',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({wp_url:cur.wp_url,wp_username:cur.wp_username,wp_app_password:cur.wp_app_password})}).then(r=>r.json()).catch(e=>({ok:false,error:e.message}));
+  if(!r.ok){ setStatus('wpStatus','err', r.error||'connection failed'); return; }
+  cur.wp_site_name=r.siteName||''; cur.wp_authors=r.users||[]; cur.categories=r.categories||[];
+  if(!cur.name && cur.wp_site_name) $('f_name').value = cur.wp_site_name;
+  setStatus('wpStatus','ok',`connected · ${esc(cur.wp_site_name)||cur.wp_url} · ${cur.wp_authors.length} authors · ${cur.categories.length} categories`);
+  renderDiscovered();
+}
+
+async function loadDolphin(){
+  const picker = $('pinPicker');
+  picker.innerHTML = '<span class="status busy">loading Dolphin profiles…</span>';
+  try{
+    const r = await fetch('/api/dolphin/profiles'); const j = await r.json();
+    if(!r.ok || j.error) throw new Error(j.error||('HTTP '+r.status));
+    dolphinProfiles = j;
+    picker.innerHTML = `<select id="pinSelect"><option value="">Select a Dolphin profile…</option>${j.map(p=>`<option value="${esc(p.id)}" data-name="${esc(p.name)}">${esc(p.name)} (${esc(p.id)})</option>`).join('')}</select><button class="btn" id="addPinBtn">Add account</button>`;
+    $('addPinBtn').onclick = ()=>{ const s=$('pinSelect'); const id=s.value; if(!id) return; const name=s.selectedOptions[0].dataset.name; if((cur.pinterest_accounts||[]).some(p=>p.dolphinProfileId===id)) return; cur.pinterest_accounts=cur.pinterest_accounts||[]; cur.pinterest_accounts.push({dolphinProfileId:id,name}); renderPins(); };
+  }catch(e){
+    // graceful fallback: manual entry
+    picker.innerHTML = `<input id="mProfile" placeholder="Dolphin profile ID"><input id="mLabel" placeholder="label (e.g. Main)"><button class="btn" id="addPinBtn">Add</button>`;
+    setStatus('pinStatus','err',`Dolphin not reachable (${esc(e.message)}). Open the Dolphin app + log in, or paste a fresh token in secrets.json. You can add profile IDs manually.`);
+    $('addPinBtn').onclick = ()=>{ const id=$('mProfile').value.trim(); if(!id) return; const name=$('mLabel').value.trim()||('Profile '+id); cur.pinterest_accounts=cur.pinterest_accounts||[]; cur.pinterest_accounts.push({dolphinProfileId:id,name}); renderPins(); $('mProfile').value='';$('mLabel').value=''; };
   }
+}
 
-  function openForm(site) {
-    formCard.classList.remove('hidden');
-    $('formTitle').textContent = site ? 'Edit site' : 'Add site';
-    $('f_id').value = site?.id || '';
-    $('f_name').value = site?.name || '';
-    $('f_slug').value = site?.slug || '';
-    $('f_wp_url').value = site?.wp_url || '';
-    $('f_wp_username').value = site?.wp_username || '';
-    $('f_wp_app_password').value = site?.wp_app_password || '';
-    $('f_categories').value = (site?.categories||[]).join(', ');
-    $('f_pins').value = (site?.pinterest_accounts||[]).map(p => `${p.label||p.id} = ${p.dolphinProfileId||''}`).join('\n');
-    formCard.scrollIntoView({behavior:'smooth'});
-  }
+async function save(){
+  pull();
+  if(!cur.name){ alert('Site name is required'); return; }
+  const method = cur.id ? 'PUT':'POST'; const url = cur.id ? '/api/sites/'+cur.id : '/api/sites';
+  const r = await fetch(url,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(cur)}).then(r=>r.json());
+  if(r.error){ alert('Error: '+r.error); return; }
+  if(!cur.id && r.id) cur.id = r.id;
+  await loadSites(); renderEditor();
+  setStatus('wpStatus', cur.wp_site_name?'ok':'idle', cur.wp_site_name?`saved · connected · ${(cur.wp_authors||[]).length} authors · ${(cur.categories||[]).length} categories`:'saved');
+}
 
-  function collect() {
-    const cats = $('f_categories').value.split(',').map(s=>s.trim()).filter(Boolean);
-    const pins = $('f_pins').value.split('\n').map(l=>l.trim()).filter(Boolean).map((l,i)=>{
-      const [label, id] = l.split('=').map(x=>x.trim());
-      return { id:'acc'+(i+1), label: label||('acc'+(i+1)), dolphinProfileId: id||'' };
-    });
-    return {
-      name: $('f_name').value.trim(), slug: $('f_slug').value.trim(),
-      wp_url: $('f_wp_url').value.trim(), wp_username: $('f_wp_username').value.trim(),
-      wp_app_password: $('f_wp_app_password').value.trim(), categories: cats, pinterest_accounts: pins,
-    };
-  }
+// events
+$('newBtn').onclick = ()=>{ cur=blank(); loadSites(); renderEditor(); $('wpStatus').style.display='none'; $('pinStatus').style.display='none'; };
+$('connectBtn').onclick = connectWp;
+$('saveBtn').onclick = save;
+$('useBtn').onclick = async ()=>{ if(!cur.id) return; await fetch('/api/sites/'+cur.id+'/activate',{method:'POST'}); cur.active=true; await loadSites(); renderEditor(); };
+$('delBtn').onclick = async ()=>{ if(cur.id && confirm('Delete this site?')){ await fetch('/api/sites/'+cur.id,{method:'DELETE'}); cur=null; await loadSites(); renderEditor(); } };
+$('pinChips').onclick = e=>{ const b=e.target.closest('button[data-rm]'); if(!b) return; cur.pinterest_accounts.splice(+b.dataset.rm,1); renderPins(); };
+$('siteList').onclick = e=>{ const it=e.target.closest('.site-item[data-id]'); if(!it) return; cur = JSON.parse(JSON.stringify(sites.find(s=>s.id==it.dataset.id))); loadSites(); renderEditor(); };
 
-  $('addBtn').onclick = () => openForm(null);
-  $('cancelBtn').onclick = () => formCard.classList.add('hidden');
-  $('saveBtn').onclick = async () => {
-    const data = collect();
-    if (!data.name) { alert('Site name is required'); return; }
-    const id = $('f_id').value;
-    const r = await fetch(id ? '/api/sites/'+id : '/api/sites', {
-      method: id ? 'PUT' : 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data),
-    }).then(r=>r.json());
-    if (r.error) { alert('Error: '+r.error); return; }
-    formCard.classList.add('hidden'); load();
-  };
-
-  body.onclick = async (e) => {
-    const btn = e.target.closest('button[data-act]'); if (!btn) return;
-    const id = btn.dataset.id, act = btn.dataset.act;
-    if (act === 'edit') { openForm(e.target.closest('tr')._site); return; }
-    if (act === 'activate') { await fetch('/api/sites/'+id+'/activate',{method:'POST'}); load(); return; }
-    if (act === 'del') { if (confirm('Delete this site?')) { await fetch('/api/sites/'+id,{method:'DELETE'}); load(); } }
-  };
-
-  load();
+(async function init(){ await loadSites(); loadDolphin(); })();
 </script>

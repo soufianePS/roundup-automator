@@ -12,8 +12,10 @@ CREATE TABLE IF NOT EXISTS sites (
   wp_url              TEXT,
   wp_username         TEXT,
   wp_app_password     TEXT,
-  categories          TEXT,   -- JSON array of category names
-  pinterest_accounts  TEXT,   -- JSON array of {id, label, dolphinProfileId}
+  wp_site_name        TEXT,   -- auto-discovered on connect
+  wp_authors          TEXT,   -- JSON array of {id, name, slug} (auto-discovered)
+  categories          TEXT,   -- JSON array of {id, name} (auto-discovered from WP)
+  pinterest_accounts  TEXT,   -- JSON array of {dolphinProfileId, name, boards?}
   active              INTEGER DEFAULT 0,  -- 1 = currently selected site
   created_at          TEXT DEFAULT (datetime('now')),
   updated_at          TEXT DEFAULT (datetime('now'))
