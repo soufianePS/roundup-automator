@@ -61,7 +61,8 @@ app.get('/api/dolphin/profiles', async (req, res) => {
     const cfg = secretOpt('dolphinAnty');
     if (!cfg?.apiToken) return res.status(400).json({ error: 'Dolphin token not set in config/secrets.json' });
     const d = new DolphinAnty({ dolphinAnty: cfg });
-    const list = await d.listProfiles({ limit: 100 });
+    // Local API first (works on Dolphin's free plan), cloud as fallback.
+    const list = await d.listProfilesAny({ limit: 100 });
     res.json((Array.isArray(list) ? list : []).map(p => ({ id: String(p.id), name: p.name || p.title || ('Profile ' + p.id) })));
   } catch (e) {
     // Return 200 with an error field (not 500) — the UI expects this and falls

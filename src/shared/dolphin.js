@@ -90,6 +90,28 @@ export class DolphinAnty {
     return r.data || r;
   }
 
+  /**
+   * List profiles via the LOCAL API (desktop app). Works on the FREE plan,
+   * unlike the cloud API which requires a paid subscription. Requires the
+   * Dolphin desktop app to be running and logged into this token's account.
+   */
+  async listProfilesLocal({ limit = 100 } = {}) {
+    await this.loginLocal(); // establishes the local session; throws if token rejected
+    const r = await this._req(this.localBase, `/v1.0/browser_profiles?limit=${limit}`);
+    return r?.data || r?.profiles || r;
+  }
+
+  /** Best-effort list: try local (free-plan friendly) first, then cloud. */
+  async listProfilesAny(opts) {
+    try { return await this.listProfilesLocal(opts); }
+    catch (localErr) {
+      try { return await this.listProfiles(opts); }
+      catch (cloudErr) {
+        throw new Error(`local: ${localErr.message.split('\n')[0]} · cloud: ${cloudErr.message.split('\n')[0]}`);
+      }
+    }
+  }
+
   // ── Local API ────────────────────────────────────────────────
 
   /**
