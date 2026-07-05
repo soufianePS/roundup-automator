@@ -32,6 +32,8 @@ function _migrate(db) {
   const add = (table, col, decl) => { try { db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${decl}`); } catch { /* exists */ } };
   add('sites', 'wp_site_name', 'TEXT');
   add('sites', 'wp_authors', 'TEXT');
+  add('keyword_scores', 'peak_month', 'TEXT');
+  add('keyword_scores', 'publish_by', 'TEXT');
 }
 
 export function tables() {

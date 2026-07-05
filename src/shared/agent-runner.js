@@ -7,11 +7,36 @@
  * command line contains only fixed flags, so shell:true is safe here.
  */
 import { spawn } from 'child_process';
+import { join } from 'path';
 import { Logger } from './logger.js';
 
-// Tools the headless agent may use without prompting. Bash lets it call the
-// app's own API (curl localhost) and run node scripts; web tools for research.
-const ALLOWED_TOOLS = 'Read,Grep,Glob,Bash,WebSearch,WebFetch';
+// Tools the headless agent may use without prompting. Full file access (Read/
+// Write/Edit) + Bash (run node scripts, call localhost) + web research + the
+// app's own functions via `roundup` MCP + a real BROWSER via `playwright` MCP
+// (navigate/click/type/screenshot + vision — for Google Images, Pinterest
+// Trends, PinClicks).
+const ALLOWED_TOOLS = 'Read,Write,Edit,Grep,Glob,Bash,WebSearch,WebFetch,mcp__roundup,mcp__playwright';
+
+// Briefing prepended to the agent's system prompt so it knows it IS the app's
+// brain, what tools it has, and where its detailed how-to lives (the skills).
+const SYSTEM_BRIEFING = [
+  'You are the brain of the Roundup Automator app — a family/home idea-roundup',
+  'blog tool with Pinterest keyword intelligence. You have FULL access to the',
+  "app's code, files, and data, and you EXECUTE tasks, not just advise.",
+  'TOOLS: (1) `roundup` MCP = the app\'s functions (add_topic, save_keyword_score,',
+  'create_article, add_article_item, wp_create_draft, wp_upload_image,',
+  'list_dolphin_profiles, sql_query, …) — the safe, validated way to touch the DB',
+  'and WordPress. (2) `playwright` MCP = a real browser (navigate, click, type,',
+  'screenshot, vision) — use it to research Pinterest Trends + PinClicks and to',
+  'find/vet real (non-AI) images on Google Images. The research browser is a',
+  'persistent profile that should already be logged into PinClicks/Pinterest; if',
+  'you hit a login wall, tell the user to run `npm run browser:login`. (3)',
+  'Read/Write/Edit/Bash for code and files.',
+  'HOW-TO lives in the skills (keyword-research, roundup-images) — they auto-load',
+  'by topic; follow them. Read CLAUDE.md for the full vision and decisions.',
+  'Guardrails: NO AI images in article bodies — real sourced photos with a credit',
+  'link only; be honest ("opportunity", never "will go viral").',
+].join(' ');
 
 const runs = new Map();   // runId -> { proc, events:[], listeners:Set, done, sessionId }
 let _current = null;
@@ -24,19 +49,29 @@ function _emit(run, ev) {
 function _toolInfo(name, input) {
   if (!input) return '';
   if (name === 'Bash') return String(input.command || '').slice(0, 100);
-  if (name === 'Read' || name === 'Edit' || name === 'Write') return String(input.file_path || '').slice(0, 80);
+  if (name === 'Read' || name === 'Edit' || name === 'Write') return String(input.file_path || input.path || '').slice(0, 80);
   if (name === 'WebFetch') return String(input.url || '').slice(0, 80);
   if (name === 'WebSearch' || name === 'Grep' || name === 'Glob') return String(input.query || input.pattern || '').slice(0, 80);
+  // MCP app tools (mcp__roundup__*) — show the most telling argument.
+  if (name.startsWith('mcp__')) {
+    return String(input.keyword || input.title || input.sql || input.name || input.status || (input.id ?? '') || '').slice(0, 80);
+  }
   return '';
 }
 
 export function startAgentRun(prompt, { sessionId = null, cwd } = {}) {
   const runId = (globalThis.crypto?.randomUUID?.() || String(Date.now()));
+  const mcpConfig = join(cwd || process.cwd(), 'mcp.config.json');
   const args = ['-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages',
-    '--permission-mode', 'dontAsk', '--allowedTools', ALLOWED_TOOLS];
+    '--permission-mode', 'dontAsk', '--allowedTools', ALLOWED_TOOLS,
+    '--mcp-config', mcpConfig, '--strict-mcp-config',
+    '--append-system-prompt', SYSTEM_BRIEFING];
   if (sessionId) args.push('--resume', sessionId);
 
-  const proc = spawn('claude', args, { cwd, shell: true });
+  // shell:true is needed on Windows (resolves claude.cmd) but does NOT auto-quote
+  // args — so quote any arg with spaces/specials (mcp path, system briefing).
+  const q = (a) => (/[\s"&|<>()^%]/.test(a) ? `"${String(a).replace(/"/g, '""')}"` : a);
+  const proc = spawn('claude', args.map(q), { cwd, shell: true });
   const run = { proc, events: [], listeners: new Set(), done: false, sessionId: null, streamedText: false };
   runs.set(runId, run);
   _current = run;

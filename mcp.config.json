@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "roundup": {
+      "command": "node",
+      "args": ["src/mcp/roundup-mcp.js"]
+    },
+    "playwright": {
+      "command": "node",
+      "args": [
+        "node_modules/@playwright/mcp/cli.js",
+        "--browser", "chromium",
+        "--user-data-dir", "data/browser-profiles/research",
+        "--output-dir", ".playwright-mcp",
+        "--caps", "vision"
+      ]
+    }
+  }
+}

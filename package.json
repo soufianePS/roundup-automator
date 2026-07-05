@@ -6,14 +6,18 @@
   "private": true,
   "scripts": {
     "start": "node src/server.js",
-    "db:init": "node src/db/db.js --init"
+    "db:init": "node src/db/db.js --init",
+    "browser:login": "node scripts/browser-login.mjs"
   },
   "engines": {
     "node": ">=22"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@playwright/mcp": "^0.0.77",
     "express": "^4.21.0",
     "playwright": "^1.48.0",
-    "sharp": "^0.33.0"
+    "sharp": "^0.33.0",
+    "zod": "^4.4.3"
   }
 }

@@ -46,6 +46,8 @@ CREATE TABLE IF NOT EXISTS keyword_scores (
   title_suggestion  TEXT,
   pin_description   TEXT,
   hashtags          TEXT,
+  peak_month        TEXT,                      -- when Pinterest demand peaks (e.g. "November")
+  publish_by        TEXT,                      -- publish-by date to catch the rise (e.g. "mid-September")
   source_notes      TEXT,                      -- raw signals / reasoning
   researched_at     TEXT DEFAULT (datetime('now'))
 );

@@ -156,7 +156,12 @@ reading the live page is the whole point.
 ### 5. Save
 Call `save_keyword_score` once per keyword with:
 `{keyword, opportunity_score, demand, momentum, competition, seasonal_timing, fit,
-title_suggestion, pin_description, hashtags, source_notes}`.
+title_suggestion, pin_description, hashtags, peak_month, publish_by, source_notes}`.
+- `opportunity_score` is what the dashboard shows as the **viral-potential %** — make it
+  honest (0–100 from the rubric).
+- `peak_month`: the month demand peaks (e.g. "November"), or "year-round" for evergreen.
+- `publish_by`: the concrete publish-by date to catch the rise (e.g. "mid-September"),
+  derived from the lead-time rule. This drives the "Publish by" badge on each card.
 Put a one-line note in `source_notes` on what you saw AND the timing verdict, e.g.
 "Trends 78, rising cluster, peaks Nov → publish by ~mid-Sep; PinClicks vol solid,
 small blogs ranking, low competition".

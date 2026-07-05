@@ -13,6 +13,7 @@ import { WordPress } from './shared/wordpress.js';
 import { DolphinAnty } from './shared/dolphin.js';
 import { probePinterestAccount } from './shared/pinterest-probe.js';
 import { startAgentRun, subscribeAgentRun, stopAgentRun } from './shared/agent-runner.js';
+import { openLoginSession, closeLoginSession, isLoginSessionOpen, profileExists, DEFAULT_TABS } from './shared/research-browser.js';
 import { secretOpt, saveSecretSection } from './config.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -126,9 +127,32 @@ app.post('/api/agent/run', (req, res) => {
 app.get('/api/agent/stream/:runId', (req, res) => subscribeAgentRun(req.params.runId, res));
 app.post('/api/agent/stop', (req, res) => res.json({ ok: stopAgentRun() }));
 
+// ── Agent research browser (one persistent, logged-in profile) ──
+app.get('/api/browser/status', (req, res) =>
+  res.json({ profileExists: profileExists(), open: isLoginSessionOpen(), tabs: DEFAULT_TABS.map(t => t.name) }));
+app.post('/api/browser/open', async (req, res) => {
+  try { res.json(await openLoginSession()); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post('/api/browser/close', async (req, res) => {
+  try { res.json(await closeLoginSession()); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 // ── read-only helpers for the dashboard ──
 app.get('/api/topics', (req, res) => { try { res.json(Topics.list()); } catch (e) { res.status(500).json({ error: e.message }); } });
+// Queue a researched keyword as a topic (the dashboard "Queue" button).
+app.post('/api/topics', (req, res) => {
+  try {
+    const { keyword, title, type, priority } = req.body || {};
+    if (!keyword || !keyword.trim()) return res.status(400).json({ error: 'keyword required' });
+    res.json({ ok: true, id: Topics.add(keyword.trim(), title || null, type || 'roundup', priority || 0) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 app.get('/api/keywords', (req, res) => { try { res.json(KeywordScores.top(50)); } catch (e) { res.status(500).json({ error: e.message }); } });
+// The latest research batch — powers the Trend Radar cards ("15 to work on now").
+app.get('/api/keywords/latest', (req, res) => {
+  try { res.json(KeywordScores.latest(Math.min(Number(req.query.limit) || 15, 50))); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
 app.get('/api/logs', (req, res) => res.json(Logger.getLogs()));
 app.get('/api/state', (req, res) => res.json({ ok: true, activeSite: Sites.getActive()?.name || null }));
 

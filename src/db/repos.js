@@ -72,17 +72,22 @@ export const KeywordScores = {
   save(k) {
     return db().prepare(`INSERT INTO keyword_scores
       (keyword, opportunity_score, demand, momentum, competition, seasonal_timing, fit,
-       title_suggestion, pin_description, hashtags, source_notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+       title_suggestion, pin_description, hashtags, peak_month, publish_by, source_notes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
       k.keyword, k.opportunity_score ?? null, k.demand ?? null, k.momentum ?? null,
       k.competition ?? null, k.seasonal_timing ?? null, k.fit ?? null,
       k.title_suggestion ?? null, k.pin_description ?? null,
       Array.isArray(k.hashtags) ? k.hashtags.join(' ') : (k.hashtags ?? null),
-      k.source_notes ?? null
+      k.peak_month ?? null, k.publish_by ?? null, k.source_notes ?? null
     ).lastInsertRowid;
   },
   top(limit = 25) {
     return db().prepare('SELECT * FROM keyword_scores ORDER BY opportunity_score DESC LIMIT ?').all(limit);
+  },
+  // The most recently researched batch (newest first), then callers sort by score.
+  // "Show me the 15 topics to work on now" = the agent's latest research run.
+  latest(limit = 15) {
+    return db().prepare('SELECT * FROM keyword_scores ORDER BY id DESC LIMIT ?').all(limit);
   },
 };
 

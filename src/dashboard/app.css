@@ -180,6 +180,47 @@ input:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 
 select{font-family:inherit;font-size:13.5px;padding:9px 11px;border:1px solid var(--hairline);border-radius:10px;background:var(--surface);color:var(--ink);min-width:220px;box-shadow:var(--sh-sm)}
 select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
 
+/* ── Trend Radar (Overview) ── */
+.radar .core{padding:18px}
+.radar .ask{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
+.radar .ask textarea{flex:1;min-width:240px;resize:none;font-family:inherit;font-size:14px;padding:11px 13px;border:1px solid var(--hairline);border-radius:12px;background:var(--surface);color:var(--ink);box-shadow:var(--sh-sm);max-height:140px}
+.radar .ask textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.radar .prompthint{margin:12px 0 0;font-size:12px;color:var(--muted)}
+.radar .prompthint b{color:var(--accent-press);font-weight:600}
+
+/* live agent activity panel */
+.activity{margin-top:16px;border:1px dashed var(--hairline);border-radius:var(--r-inner);background:var(--surface);overflow:hidden}
+.activity .ah{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;border-bottom:1px solid var(--hairline-2)}
+.activity .ah b{font-size:12.5px;font-weight:600}
+.activity .stream{max-height:260px;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+.activity .say{white-space:pre-wrap;font-size:13px;line-height:1.5;color:var(--ink)}
+.activity .tchip{align-self:flex-start;font-family:var(--mono);font-size:11px;color:var(--muted);background:var(--shell);border:1px solid var(--hairline);border-radius:8px;padding:4px 10px}
+.activity .tchip .td{color:var(--accent)}.activity .tchip .ti{color:var(--faint)}
+
+/* results grid of scored topic cards */
+.radar-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:16px;margin-bottom:20px}
+.rc{background:var(--shell);border:1px solid var(--hairline);border-radius:var(--r-card);padding:5px;box-shadow:var(--sh-md);transition:transform .3s var(--ease),box-shadow .3s var(--ease)}
+.rc:hover{transform:translateY(-3px);box-shadow:var(--sh-lift)}
+.rc .in{background:var(--surface);border:1px solid var(--hairline-2);border-radius:var(--r-inner);padding:16px;height:100%;display:flex;flex-direction:column;gap:12px}
+.rc-top{display:flex;gap:14px;align-items:center}
+.gauge{position:relative;--p:0;--gc:var(--good);flex:none;width:64px;height:64px;border-radius:50%;
+  background:conic-gradient(var(--gc) calc(var(--p)*3.6deg),var(--shell) 0);
+  display:grid;place-items:center;box-shadow:inset 0 1px 2px rgba(80,55,40,.06)}
+.gauge::before{content:"";position:absolute;width:48px;height:48px;border-radius:50%;background:var(--surface);box-shadow:var(--sh-sm)}
+.gauge span{position:relative;font-family:var(--mono);font-weight:600;font-size:19px;line-height:1;letter-spacing:-.02em}
+.gauge span i{font-style:normal;font-size:10px;color:var(--faint);margin-left:1px}
+.rc-head{min-width:0}
+.rc-vp{font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);margin-bottom:3px}
+.rc-title{font-weight:600;font-size:14.5px;line-height:1.28;letter-spacing:-.01em}
+.rc-kw{font-family:var(--mono);font-size:11px;color:var(--faint);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rc-badges{display:flex;flex-wrap:wrap;gap:7px;align-items:center}
+.rc-why{font-size:12px;color:var(--muted);line-height:1.5;flex:1}
+.rc-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:2px;padding-top:12px;border-top:1px solid var(--hairline-2)}
+.rc-peak{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.rc-foot .btn.sm.done{background:var(--good-bg);color:var(--good);border-color:transparent}
+.toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;font-size:13px;font-weight:550;padding:10px 18px;border-radius:var(--r-pill);box-shadow:var(--sh-lift);opacity:0;transition:opacity .3s var(--ease),transform .3s var(--ease);z-index:50;pointer-events:none}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(-4px)}
+
 @media(max-width:880px){
   .settings-wrap{grid-template-columns:1fr}
   .app{grid-template-columns:1fr}
