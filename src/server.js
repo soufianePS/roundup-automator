@@ -12,10 +12,12 @@ import { Sites, Topics, KeywordScores } from './db/repos.js';
 import { WordPress } from './shared/wordpress.js';
 import { DolphinAnty } from './shared/dolphin.js';
 import { probePinterestAccount } from './shared/pinterest-probe.js';
+import { startAgentRun, subscribeAgentRun, stopAgentRun } from './shared/agent-runner.js';
 import { secretOpt, saveSecretSection } from './config.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DASH = join(__dirname, 'dashboard');
+const PROJECT_ROOT = join(__dirname, '..');
 getDb(); // ensure db + schema exist
 
 const app = express();
@@ -38,6 +40,7 @@ function page(title, file) {
 
 app.get('/', (req, res) => res.type('html').send(page('Roundup · Overview', 'index.html')));
 app.get('/settings', (req, res) => res.type('html').send(page('Roundup · Settings', 'settings.html')));
+app.get('/agent', (req, res) => res.type('html').send(page('Roundup · Agent', 'agent.html')));
 
 // ── Sites API (multi-site) ──
 app.get('/api/sites', (req, res) => { try { res.json(Sites.list()); } catch (e) { res.status(500).json({ error: e.message }); } });
@@ -110,6 +113,18 @@ app.post('/api/pinterest/probe', async (req, res) => {
     res.json(await probePinterestAccount(String(id)));
   } catch (e) { res.json({ ok: false, error: e.message }); }
 });
+
+// ── Agent (headless Claude on the user's subscription) ──
+app.post('/api/agent/run', (req, res) => {
+  try {
+    const { prompt, sessionId } = req.body || {};
+    if (!prompt || !prompt.trim()) return res.status(400).json({ error: 'prompt required' });
+    const runId = startAgentRun(prompt, { sessionId: sessionId || null, cwd: PROJECT_ROOT });
+    res.json({ runId });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.get('/api/agent/stream/:runId', (req, res) => subscribeAgentRun(req.params.runId, res));
+app.post('/api/agent/stop', (req, res) => res.json({ ok: stopAgentRun() }));
 
 // ── read-only helpers for the dashboard ──
 app.get('/api/topics', (req, res) => { try { res.json(Topics.list()); } catch (e) { res.status(500).json({ error: e.message }); } });
