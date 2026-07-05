@@ -17,7 +17,9 @@ getDb(); // ensure db + schema exist
 const app = express();
 app.use(express.json());
 // Serve the dashboard's static assets (app.css, fonts/*) directly.
-app.use(express.static(DASH));
+// index:false — do NOT let express auto-serve the raw content-only index.html
+// for "/"; our page() route wraps it with the stylesheet link.
+app.use(express.static(DASH, { index: false }));
 
 // Serve a content-only dashboard file wrapped in a minimal HTML document.
 function page(title, file) {
