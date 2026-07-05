@@ -12,7 +12,7 @@ import { Sites, Topics, KeywordScores } from './db/repos.js';
 import { WordPress } from './shared/wordpress.js';
 import { DolphinAnty } from './shared/dolphin.js';
 import { probePinterestAccount } from './shared/pinterest-probe.js';
-import { secretOpt } from './config.js';
+import { secretOpt, saveSecretSection } from './config.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DASH = join(__dirname, 'dashboard');
@@ -70,6 +70,36 @@ app.get('/api/dolphin/profiles', async (req, res) => {
     // back to manual entry; avoids noisy console 500s when Dolphin is offline.
     res.json({ error: e.message });
   }
+});
+
+// ── Connections (shared credentials in secrets.json) ──
+// Status is masked — passwords/tokens are never returned to the client.
+app.get('/api/connections', (req, res) => {
+  const dolphin = secretOpt('dolphinAnty') || {};
+  const pin = secretOpt('pinclicks') || {};
+  const gem = secretOpt('gemini') || {};
+  res.json({
+    dolphin: { hasToken: !!dolphin.apiToken },
+    pinclicks: { email: pin.email || '', hasPassword: !!pin.password },
+    gemini: { keys: (gem.apiKeys || []).length },
+  });
+});
+app.post('/api/connections/pinclicks', (req, res) => {
+  try {
+    const { email, password } = req.body || {};
+    const cur = secretOpt('pinclicks') || {};
+    // Blank password field = keep existing (we never send it to the client).
+    saveSecretSection('pinclicks', { email: email ?? cur.email, password: password ? password : cur.password });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/connections/dolphin', (req, res) => {
+  try {
+    const { apiToken } = req.body || {};
+    if (!apiToken) return res.status(400).json({ error: 'apiToken required' });
+    saveSecretSection('dolphinAnty', { apiToken });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // Probe a Pinterest account (launches the Dolphin profile briefly → username + boards).

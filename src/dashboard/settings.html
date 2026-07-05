@@ -21,6 +21,26 @@
       </div>
     </div>
 
+    <div class="card"><div class="core">
+      <div class="card-h"><h2>Connections</h2><span class="hint">shared across all sites</span></div>
+      <div class="section">
+        <h3>PinClicks <span id="pcBadge"></span></h3>
+        <p class="desc">Your paid PinClicks login — used for keyword competition research.</p>
+        <div class="grid">
+          <div class="field"><label>Email</label><input id="pc_email" placeholder="you@example.com"></div>
+          <div class="field"><label>Password</label><input id="pc_pass" type="password" placeholder="••••••••"></div>
+        </div>
+        <button class="btn" id="pcSave">Save PinClicks</button>
+        <span class="status idle" id="pcStatus" style="display:none"></span>
+      </div>
+      <div class="section">
+        <h3>Dolphin Anty</h3>
+        <p class="desc">Shared API token — lists your profiles and launches them for Pinterest.</p>
+        <span class="status" id="dolStatus">checking…</span>
+        <div class="picker"><input id="dolToken" placeholder="paste a new token to update (optional)"><button class="btn" id="dolSave">Update token</button></div>
+      </div>
+    </div></div>
+
     <div class="settings-wrap">
       <!-- left: sites list -->
       <div class="card site-list"><div class="core">
@@ -170,5 +190,27 @@ $('delBtn').onclick = async ()=>{ if(cur.id && confirm('Delete this site?')){ aw
 $('pinChips').onclick = e=>{ const b=e.target.closest('button[data-rm]'); if(!b) return; cur.pinterest_accounts.splice(+b.dataset.rm,1); renderPins(); };
 $('siteList').onclick = e=>{ const it=e.target.closest('.site-item[data-id]'); if(!it) return; cur = JSON.parse(JSON.stringify(sites.find(s=>s.id==it.dataset.id))); loadSites(); renderEditor(); };
 
-(async function init(){ await loadSites(); loadDolphin(); })();
+async function loadConnections(){
+  const c = await fetch('/api/connections').then(r=>r.json()).catch(()=>null);
+  if(!c) return;
+  $('pc_email').value = c.pinclicks.email||'';
+  if(c.pinclicks.hasPassword){ $('pc_pass').placeholder='•••••••• (saved)'; $('pcBadge').innerHTML='<span class="badge on">saved</span>'; }
+  const d=$('dolStatus');
+  if(c.dolphin.hasToken){ d.className='status ok'; d.textContent='token set'; }
+  else { d.className='status err'; d.textContent='no token — paste one below'; }
+}
+$('pcSave').onclick = async ()=>{
+  const email=$('pc_email').value.trim(), password=$('pc_pass').value;
+  const r=await fetch('/api/connections/pinclicks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password})}).then(r=>r.json());
+  if(r.error){ setStatus('pcStatus','err',r.error); return; }
+  $('pc_pass').value=''; setStatus('pcStatus','ok','PinClicks saved'); loadConnections();
+};
+$('dolSave').onclick = async ()=>{
+  const apiToken=$('dolToken').value.trim(); if(!apiToken) return;
+  const r=await fetch('/api/connections/dolphin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiToken})}).then(r=>r.json());
+  if(r.error){ alert(r.error); return; }
+  $('dolToken').value=''; loadConnections(); loadDolphin();
+};
+
+(async function init(){ await loadSites(); loadConnections(); loadDolphin(); })();
 </script>
