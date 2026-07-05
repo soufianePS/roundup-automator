@@ -1,0 +1,14 @@
+{
+  "name": "roundup-automator",
+  "version": "0.1.0",
+  "description": "Agent-primary automation for a family/home idea-roundup blog + Pinterest keyword intelligence. Sibling of recipe-automator.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node src/server.js",
+    "db:init": "node src/db/db.js --init"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

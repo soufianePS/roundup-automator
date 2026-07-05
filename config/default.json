@@ -1,0 +1,26 @@
+{
+  "siteName": "Family Home Blog",
+  "categories": ["Home Decor", "DIY & Crafts", "Home", "Holidays", "Lifestyle", "Organization"],
+  "roundup": {
+    "defaultItemCount": 25,
+    "titleFormula": "Number + power adjective + exact keyword + audience/benefit"
+  },
+  "images": {
+    "copyrightStance": "TBD",
+    "preferPre2022ForGuaranteedReal": true,
+    "rehostImages": true,
+    "requireCredit": true
+  },
+  "opportunityRubricWeights": {
+    "demand": 0.25,
+    "momentum": 0.25,
+    "competition": 0.30,
+    "seasonalTiming": 0.15,
+    "fit": 0.05
+  },
+  "pinterest": {
+    "pinsPerArticle": 5,
+    "seasonalLeadDays": 40
+  },
+  "notes": "Non-secret defaults (committed). Secrets live in config/secrets.json (gitignored)."
+}
