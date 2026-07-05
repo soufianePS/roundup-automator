@@ -17,39 +17,32 @@
     <div class="top">
       <div>
         <div class="eyebrow">Settings</div>
-        <h1>Sites</h1>
-        <p class="lead">Connect a WordPress site with just its login + application password — the app fetches your authors and categories automatically. Pick Pinterest accounts from your Dolphin profiles.</p>
+        <h1>Settings</h1>
+        <p class="lead">Manage your sites and the agent's browser. Shared keys (Dolphin, PinClicks, Gemini) live in <code>config/secrets.json</code>.</p>
       </div>
     </div>
 
+    <!-- Agent browser: one persistent logged-in profile the agent reuses -->
     <div class="card"><div class="core">
-      <div class="card-h"><h2>Connections</h2><span class="hint">shared across all sites</span></div>
+      <div class="card-h"><h2>Agent browser</h2><span class="hint" id="brBadge"></span></div>
       <div class="section">
-        <h3>PinClicks <span id="pcBadge"></span></h3>
-        <p class="desc">Your paid PinClicks login — used for keyword competition research.</p>
-        <div class="grid">
-          <div class="field"><label>Email</label><input id="pc_email" placeholder="you@example.com"></div>
-          <div class="field"><label>Password</label><input id="pc_pass" type="password" placeholder="••••••••"></div>
+        <p class="desc">One Chrome profile the <b>agent reuses</b> to research Pinterest Trends, PinClicks, and Google Images. Open it, sign into your accounts once, then <b>close the window</b> — the agent stays logged in and your passwords never touch it.</p>
+        <div class="picker">
+          <button class="btn primary" id="brOpen">Open browser to log in</button>
+          <button class="btn" id="brClose">Close</button>
+          <span class="status idle" id="brStatus">checking…</span>
         </div>
-        <button class="btn" id="pcSave">Save PinClicks</button>
-        <span class="status idle" id="pcStatus" style="display:none"></span>
-      </div>
-      <div class="section">
-        <h3>Dolphin Anty</h3>
-        <p class="desc">Shared API token — lists your profiles and launches them for Pinterest.</p>
-        <span class="status" id="dolStatus">checking…</span>
-        <div class="picker"><input id="dolToken" placeholder="paste a new token to update (optional)"><button class="btn" id="dolSave">Update token</button></div>
+        <p class="fhint" style="margin-top:10px">⚠ Close this window before asking the agent to browse — they share one profile.</p>
       </div>
     </div></div>
 
+    <!-- Sites: two-pane list + editor -->
     <div class="settings-wrap">
-      <!-- left: sites list -->
       <div class="card site-list"><div class="core">
         <div id="siteList"></div>
         <div class="site-item new" id="newBtn"><span class="ic">＋</span> New site</div>
       </div></div>
 
-      <!-- right: editor -->
       <div class="card" id="editorCard" style="display:none"><div class="core">
         <div class="editor-head">
           <input id="f_name" placeholder="Site name (e.g. Family Home Blog)">
@@ -61,8 +54,8 @@
         </div>
 
         <div class="section">
-          <h3>WordPress connection</h3>
-          <p class="desc">Enter the URL, your username, and a WordPress <b>application password</b> (Users → Profile → Application Passwords). Then Connect — we validate and pull your authors + categories.</p>
+          <h3>WordPress</h3>
+          <p class="desc">Enter the URL, your username, and a WordPress <b>application password</b>, then Connect — we validate and pull your authors + categories automatically.</p>
           <div class="grid">
             <div class="field full"><label>WordPress URL</label><input id="f_wp_url" placeholder="https://yourfamilyblog.com"></div>
             <div class="field"><label>Username</label><input id="f_wp_username" placeholder="admin"></div>
@@ -75,7 +68,7 @@
 
         <div class="section">
           <h3>Pinterest accounts</h3>
-          <p class="desc">Pick from your Dolphin Anty profiles. Each becomes a posting account for this site.</p>
+          <p class="desc">Pick from your Dolphin profiles. Each becomes a posting account for this site.</p>
           <div class="picker" id="pinPicker"></div>
           <span class="status idle" id="pinStatus" style="display:none"></span>
           <div class="chips" id="pinChips"></div>
@@ -88,130 +81,114 @@
 <script>
 const $ = id => document.getElementById(id);
 const esc = s => (s||'').toString().replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-let sites = [], cur = null, dolphinProfiles = null;
+function setStatus(id,kind,text){ const el=$(id); if(!el) return; el.className='status '+kind; el.textContent=text; el.style.display='inline-flex'; }
 
-function blank(){ return { id:null, name:'', slug:'', wp_url:'', wp_username:'', wp_app_password:'', wp_site_name:'', wp_authors:[], categories:[], pinterest_accounts:[], active:false }; }
-
-async function loadSites(){
-  sites = await fetch('/api/sites').then(r=>r.json());
-  const list = $('siteList');
-  list.innerHTML = sites.map(s=>`<div class="site-item ${cur&&cur.id===s.id?'sel':''}" data-id="${s.id}">
-      <span>${esc(s.name)||'(untitled)'}</span>${s.active?'<span class="dotmark" title="active"></span>':''}</div>`).join('');
+// Robust JSON fetch — never throws "Unexpected token '<'": if the server returns
+// HTML (e.g. a 404 page because the app needs a restart), return a clean error.
+async function jfetch(url, opts){
+  try{
+    const r = await fetch(url, opts);
+    const ct = r.headers.get('content-type')||'';
+    if(!ct.includes('application/json')){
+      return { error: r.status===404 ? 'route missing — restart the app' : `unexpected response (${r.status})` };
+    }
+    return await r.json();
+  }catch(e){ return { error: e.message }; }
 }
 
+let sites = [], cur = null;
+
+// ── Agent browser ──
+async function loadBrowser(){
+  const s = await jfetch('/api/browser/status');
+  const el = $('brStatus');
+  if(s.error){ el.className='status err'; el.textContent=s.error; return; }
+  if(s.open){ el.className='status ok'; el.textContent='login window open — sign in, then close it'; $('brBadge').innerHTML='<span class="badge on">open</span>'; }
+  else if(s.profileExists){ el.className='status ok'; el.textContent='profile ready — sessions saved'; $('brBadge').innerHTML='<span class="badge on">ready</span>'; }
+  else { el.className='status idle'; el.textContent='no profile yet — click open to create it'; $('brBadge').innerHTML=''; }
+}
+$('brOpen').onclick = async ()=>{ setStatus('brStatus','busy','opening browser…'); const r=await jfetch('/api/browser/open',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}); if(r.error) setStatus('brStatus','err',r.error); else loadBrowser(); };
+$('brClose').onclick = async ()=>{ await jfetch('/api/browser/close',{method:'POST'}); loadBrowser(); };
+
+// ── Sites ──
+function blank(){ return { id:null, name:'', wp_url:'', wp_username:'', wp_app_password:'', wp_site_name:'', wp_authors:[], categories:[], pinterest_accounts:[], active:false }; }
+async function loadSites(){
+  const r = await jfetch('/api/sites'); sites = Array.isArray(r)? r : [];
+  $('siteList').innerHTML = sites.map(s=>`<div class="site-item ${cur&&cur.id===s.id?'sel':''}" data-id="${s.id}"><span>${esc(s.name)||'(untitled)'}</span>${s.active?'<span class="dotmark" title="active"></span>':''}</div>`).join('');
+}
 function renderEditor(){
-  $('editorCard').style.display = cur ? '' : 'none';
-  if(!cur) return;
-  $('f_name').value = cur.name||''; $('f_wp_url').value = cur.wp_url||'';
-  $('f_wp_username').value = cur.wp_username||''; $('f_wp_app_password').value = cur.wp_app_password||'';
+  $('editorCard').style.display = cur ? '' : 'none'; if(!cur) return;
+  $('f_name').value=cur.name||''; $('f_wp_url').value=cur.wp_url||''; $('f_wp_username').value=cur.wp_username||''; $('f_wp_app_password').value=cur.wp_app_password||'';
   $('useBtn').style.display = cur.id && !cur.active ? '' : 'none';
   $('delBtn').style.display = cur.id ? '' : 'none';
-  // WP discovered
-  renderDiscovered();
-  renderPins();
-  // status reflects saved connection
-  if(cur.wp_site_name){ setStatus('wpStatus','ok',`connected · ${esc(cur.wp_site_name)} · ${(cur.wp_authors||[]).length} authors · ${(cur.categories||[]).length} categories`); }
-  else { $('wpStatus').style.display='none'; }
+  renderDiscovered(); renderPins();
+  if(cur.wp_site_name) setStatus('wpStatus','ok',`connected · ${esc(cur.wp_site_name)} · ${(cur.wp_authors||[]).length} authors · ${(cur.categories||[]).length} categories`);
+  else $('wpStatus').style.display='none';
+  $('pinStatus').style.display='none';
 }
 function renderDiscovered(){
-  const el = $('wpDiscovered'); const cats=cur.categories||[], auth=cur.wp_authors||[];
-  el.innerHTML = '';
-  if(auth.length){ el.innerHTML += `<span class="lbl">Authors</span>` + auth.map(a=>`<span class="chip-static">${esc(a.name)}</span>`).join(''); }
-  if(cats.length){ el.innerHTML += `<span class="lbl">Categories</span>` + cats.map(c=>`<span class="chip-static">${esc(c.name)}${c.count!=null?` · ${c.count}`:''}</span>`).join(''); }
+  const el=$('wpDiscovered'); const cats=cur.categories||[], auth=cur.wp_authors||[]; el.innerHTML='';
+  if(auth.length) el.innerHTML += `<span class="lbl">Authors</span>`+auth.map(a=>`<span class="chip-static">${esc(a.name)}</span>`).join('');
+  if(cats.length) el.innerHTML += `<span class="lbl">Categories</span>`+cats.map(c=>`<span class="chip-static">${esc(c.name)}${c.count!=null?` · ${c.count}`:''}</span>`).join('');
 }
 function renderPins(){
   $('pinChips').innerHTML = (cur.pinterest_accounts||[]).map((p,i)=>{
-    const at = p.username ? ` · @${esc(p.username)}` : '';
-    const bd = (p.boards&&p.boards.length) ? ` · ${p.boards.length} boards` : '';
+    const at=p.username?` · @${esc(p.username)}`:''; const bd=(p.boards&&p.boards.length)?` · ${p.boards.length} boards`:'';
     return `<span class="chip-x">${esc(p.name||p.dolphinProfileId)}${at}${bd} <button data-rm="${i}">×</button></span>`;
   }).join('');
 }
-async function addPinAccount(profileId, name){
-  if(!profileId) return;
-  cur.pinterest_accounts = cur.pinterest_accounts||[];
-  if(cur.pinterest_accounts.some(p=>p.dolphinProfileId===profileId)) { setStatus('pinStatus','idle','already added'); return; }
-  setStatus('pinStatus','busy','launching profile to fetch account info… (~30s)');
-  const r = await fetch('/api/pinterest/probe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({profileId})}).then(r=>r.json()).catch(e=>({ok:false,error:e.message}));
-  const acct = { dolphinProfileId:profileId, name };
-  if(r.ok){ acct.username=r.username; acct.boards=r.boards||[]; setStatus('pinStatus','ok',`added @${r.username} · ${(r.boards||[]).length} boards (remember to Save)`); }
-  else { setStatus('pinStatus','err',`added, but couldn't fetch info: ${esc(r.error||'failed')} — open Dolphin app`); }
-  cur.pinterest_accounts.push(acct); renderPins();
-}
-function setStatus(id,kind,text){ const el=$(id); el.className='status '+kind; el.textContent=text; el.style.display='inline-flex'; }
-
 function pull(){ cur.name=$('f_name').value.trim(); cur.wp_url=$('f_wp_url').value.trim(); cur.wp_username=$('f_wp_username').value.trim(); cur.wp_app_password=$('f_wp_app_password').value.trim(); }
 
 async function connectWp(){
   pull();
   if(!cur.wp_url||!cur.wp_username||!cur.wp_app_password){ setStatus('wpStatus','err','enter URL, username and application password'); return; }
   setStatus('wpStatus','busy','connecting…');
-  const r = await fetch('/api/wp/probe',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({wp_url:cur.wp_url,wp_username:cur.wp_username,wp_app_password:cur.wp_app_password})}).then(r=>r.json()).catch(e=>({ok:false,error:e.message}));
+  const r = await jfetch('/api/wp/probe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({wp_url:cur.wp_url,wp_username:cur.wp_username,wp_app_password:cur.wp_app_password})});
   if(!r.ok){ setStatus('wpStatus','err', r.error||'connection failed'); return; }
   cur.wp_site_name=r.siteName||''; cur.wp_authors=r.users||[]; cur.categories=r.categories||[];
-  if(!cur.name && cur.wp_site_name) $('f_name').value = cur.wp_site_name;
+  if(!cur.name && cur.wp_site_name) $('f_name').value=cur.wp_site_name;
   setStatus('wpStatus','ok',`connected · ${esc(cur.wp_site_name)||cur.wp_url} · ${cur.wp_authors.length} authors · ${cur.categories.length} categories`);
   renderDiscovered();
 }
 
 async function loadDolphin(){
-  const picker = $('pinPicker');
-  picker.innerHTML = '<span class="status busy">loading Dolphin profiles…</span>';
-  try{
-    const r = await fetch('/api/dolphin/profiles'); const j = await r.json();
-    if(!r.ok || j.error) throw new Error(j.error||('HTTP '+r.status));
-    dolphinProfiles = j;
+  const picker=$('pinPicker'); picker.innerHTML='<span class="status busy">loading Dolphin profiles…</span>';
+  const j = await jfetch('/api/dolphin/profiles');
+  if(Array.isArray(j)){
     picker.innerHTML = `<select id="pinSelect"><option value="">Select a Dolphin profile…</option>${j.map(p=>`<option value="${esc(p.id)}" data-name="${esc(p.name)}">${esc(p.name)} (${esc(p.id)})</option>`).join('')}</select><button class="btn" id="addPinBtn">Add account</button>`;
-    $('addPinBtn').onclick = ()=>{ const s=$('pinSelect'); const id=s.value; if(!id) return; addPinAccount(id, s.selectedOptions[0].dataset.name); };
-  }catch(e){
-    // graceful fallback: manual entry
+    $('addPinBtn').onclick=()=>{ const s=$('pinSelect'); if(!s.value) return; addPinAccount(s.value, s.selectedOptions[0].dataset.name); };
+  } else {
     picker.innerHTML = `<input id="mProfile" placeholder="Dolphin profile ID"><input id="mLabel" placeholder="label (e.g. Main)"><button class="btn" id="addPinBtn">Add</button>`;
-    setStatus('pinStatus','err',`Dolphin not reachable (${esc(e.message)}). Open the Dolphin app + log in, or paste a fresh token in secrets.json. You can add profile IDs manually.`);
-    $('addPinBtn').onclick = ()=>{ const id=$('mProfile').value.trim(); if(!id) return; addPinAccount(id, $('mLabel').value.trim()||('Profile '+id)); $('mProfile').value='';$('mLabel').value=''; };
+    setStatus('pinStatus','idle', `Dolphin not listed (${esc(j.error||'offline')}). Add profile IDs manually.`);
+    $('addPinBtn').onclick=()=>{ const id=$('mProfile').value.trim(); if(!id) return; addPinAccount(id, $('mLabel').value.trim()||('Profile '+id)); $('mProfile').value='';$('mLabel').value=''; };
   }
+}
+async function addPinAccount(profileId, name){
+  cur.pinterest_accounts=cur.pinterest_accounts||[];
+  if(cur.pinterest_accounts.some(p=>p.dolphinProfileId===profileId)){ setStatus('pinStatus','idle','already added'); return; }
+  setStatus('pinStatus','busy','fetching account info… (~30s)');
+  const r = await jfetch('/api/pinterest/probe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({profileId})});
+  const acct={ dolphinProfileId:profileId, name };
+  if(r.ok){ acct.username=r.username; acct.boards=r.boards||[]; setStatus('pinStatus','ok',`added @${r.username} · ${(r.boards||[]).length} boards (Save to keep)`); }
+  else setStatus('pinStatus','err',`added, couldn't fetch info: ${esc(r.error||'failed')}`);
+  cur.pinterest_accounts.push(acct); renderPins();
 }
 
 async function save(){
-  pull();
-  if(!cur.name){ alert('Site name is required'); return; }
-  const method = cur.id ? 'PUT':'POST'; const url = cur.id ? '/api/sites/'+cur.id : '/api/sites';
-  const r = await fetch(url,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(cur)}).then(r=>r.json());
+  pull(); if(!cur.name){ alert('Site name is required'); return; }
+  const r = await jfetch(cur.id?'/api/sites/'+cur.id:'/api/sites',{method:cur.id?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(cur)});
   if(r.error){ alert('Error: '+r.error); return; }
-  if(!cur.id && r.id) cur.id = r.id;
+  if(!cur.id && r.id) cur.id=r.id;
   await loadSites(); renderEditor();
-  setStatus('wpStatus', cur.wp_site_name?'ok':'idle', cur.wp_site_name?`saved · connected · ${(cur.wp_authors||[]).length} authors · ${(cur.categories||[]).length} categories`:'saved');
 }
 
-// events
-$('newBtn').onclick = ()=>{ cur=blank(); loadSites(); renderEditor(); $('wpStatus').style.display='none'; $('pinStatus').style.display='none'; };
-$('connectBtn').onclick = connectWp;
-$('saveBtn').onclick = save;
-$('useBtn').onclick = async ()=>{ if(!cur.id) return; await fetch('/api/sites/'+cur.id+'/activate',{method:'POST'}); cur.active=true; await loadSites(); renderEditor(); };
-$('delBtn').onclick = async ()=>{ if(cur.id && confirm('Delete this site?')){ await fetch('/api/sites/'+cur.id,{method:'DELETE'}); cur=null; await loadSites(); renderEditor(); } };
-$('pinChips').onclick = e=>{ const b=e.target.closest('button[data-rm]'); if(!b) return; cur.pinterest_accounts.splice(+b.dataset.rm,1); renderPins(); };
-$('siteList').onclick = e=>{ const it=e.target.closest('.site-item[data-id]'); if(!it) return; cur = JSON.parse(JSON.stringify(sites.find(s=>s.id==it.dataset.id))); loadSites(); renderEditor(); };
+$('newBtn').onclick=()=>{ cur=blank(); loadSites(); renderEditor(); };
+$('connectBtn').onclick=connectWp;
+$('saveBtn').onclick=save;
+$('useBtn').onclick=async()=>{ if(!cur.id) return; await jfetch('/api/sites/'+cur.id+'/activate',{method:'POST'}); cur.active=true; await loadSites(); renderEditor(); };
+$('delBtn').onclick=async()=>{ if(cur.id && confirm('Delete this site?')){ await jfetch('/api/sites/'+cur.id,{method:'DELETE'}); cur=null; await loadSites(); renderEditor(); } };
+$('pinChips').onclick=e=>{ const b=e.target.closest('button[data-rm]'); if(!b) return; cur.pinterest_accounts.splice(+b.dataset.rm,1); renderPins(); };
+$('siteList').onclick=e=>{ const it=e.target.closest('.site-item[data-id]'); if(!it) return; cur=JSON.parse(JSON.stringify(sites.find(s=>s.id==it.dataset.id))); loadSites(); renderEditor(); };
 
-async function loadConnections(){
-  const c = await fetch('/api/connections').then(r=>r.json()).catch(()=>null);
-  if(!c) return;
-  $('pc_email').value = c.pinclicks.email||'';
-  if(c.pinclicks.hasPassword){ $('pc_pass').placeholder='•••••••• (saved)'; $('pcBadge').innerHTML='<span class="badge on">saved</span>'; }
-  const d=$('dolStatus');
-  if(c.dolphin.hasToken){ d.className='status ok'; d.textContent='token set'; }
-  else { d.className='status err'; d.textContent='no token — paste one below'; }
-}
-$('pcSave').onclick = async ()=>{
-  const email=$('pc_email').value.trim(), password=$('pc_pass').value;
-  const r=await fetch('/api/connections/pinclicks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password})}).then(r=>r.json());
-  if(r.error){ setStatus('pcStatus','err',r.error); return; }
-  $('pc_pass').value=''; setStatus('pcStatus','ok','PinClicks saved'); loadConnections();
-};
-$('dolSave').onclick = async ()=>{
-  const apiToken=$('dolToken').value.trim(); if(!apiToken) return;
-  const r=await fetch('/api/connections/dolphin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiToken})}).then(r=>r.json());
-  if(r.error){ alert(r.error); return; }
-  $('dolToken').value=''; loadConnections(); loadDolphin();
-};
-
-(async function init(){ await loadSites(); loadConnections(); loadDolphin(); })();
+(async function init(){ await loadSites(); loadDolphin(); loadBrowser(); })();
 </script>
