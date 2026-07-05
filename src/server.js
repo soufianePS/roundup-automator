@@ -16,12 +16,17 @@ getDb(); // ensure db + schema exist
 
 const app = express();
 app.use(express.json());
+// Serve the dashboard's static assets (app.css, fonts/*) directly.
+app.use(express.static(DASH));
 
 // Serve a content-only dashboard file wrapped in a minimal HTML document.
 function page(title, file) {
   const body = readFileSync(join(DASH, file), 'utf8');
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">`
-    + `<meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title></head>`
+    + `<meta name="viewport" content="width=device-width,initial-scale=1">`
+    + `<link rel="preload" as="font" type="font/woff2" href="/fonts/geist.woff2" crossorigin>`
+    + `<link rel="stylesheet" href="/app.css">`
+    + `<title>${title}</title></head>`
     + `<body>${body}</body></html>`;
 }
 
