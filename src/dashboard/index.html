@@ -174,7 +174,8 @@ function detail(k){
       <div><span>Momentum</span><b>${pct(k.momentum)}</b><i>rising</i></div>
       <div><span>Reach outlook</span><b>${reachTxt}</b><i>est.</i></div>
     </div>
-    ${annos.length?`<div class="annos"><span class="annl">Pinterest tags to reuse</span>${annos.map(a=>`<span class="atag">${esc(a)}</span>`).join('')}</div>`:''}
+    ${annos.length?`<div class="annos"><span class="annl">Pinterest tags to reuse <button class="lnk-btn" data-copytags="${k.id}">⧉ copy tags</button></span>${annos.map(a=>`<span class="atag">${esc(a)}</span>`).join('')}</div>`:''}
+    <div class="copyall-row"><button class="lnk-btn" data-copyall="${k.id}">⧉ Copy everything (title · keyword · description · tags)</button></div>
     <div class="afternote">Actual impressions · saves · clicks fill in here after the pin is live.</div>
   </div></details>`;
 }
@@ -199,6 +200,7 @@ function card(k){
     <div class="in">
       <div class="rc-actions">
         <button class="ic-btn like ${k.liked?'on':''}" data-like="${k.id}" title="Like — save to your Liked view">${k.liked?'♥':'♡'}</button>
+        <button class="ic-btn copy" data-copytitle="${k.id}" title="Copy the title">⧉</button>
         <button class="ic-btn dismiss" data-dismiss="${k.id}" title="Remove this topic">✕</button>
       </div>
       <div class="rc-top">
@@ -259,13 +261,39 @@ async function loadRadar(){
   $('kpis').hidden=false;
 }
 
+let cardMap = {};
 function renderGrid(rows){
   const grid=$('grid');
   rows.sort((a,b)=>score100(b.opportunity_score)-score100(a.opportunity_score));
+  cardMap = {}; rows.forEach(r=>{ cardMap[r.id]=r; });
   grid.innerHTML = rows.map(card).join('');
   grid.querySelectorAll('button[data-kw]').forEach(b=> b.onclick=()=>queueTopic(b));
   grid.querySelectorAll('[data-dismiss]').forEach(b=> b.onclick=()=>dismissTopic(b.dataset.dismiss));
   grid.querySelectorAll('[data-like]').forEach(b=> b.onclick=()=>toggleLike(b));
+  grid.querySelectorAll('[data-copytitle]').forEach(b=> b.onclick=()=>copyField(b.dataset.copytitle,'title'));
+  grid.querySelectorAll('[data-copytags]').forEach(b=> b.onclick=()=>copyField(b.dataset.copytags,'tags'));
+  grid.querySelectorAll('[data-copyall]').forEach(b=> b.onclick=()=>copyField(b.dataset.copyall,'all'));
+}
+
+async function copyText(str, label){
+  try{ await navigator.clipboard.writeText(str); toast(label+' copied'); }
+  catch{ // fallback for non-secure contexts
+    const ta=document.createElement('textarea'); ta.value=str; document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); toast(label+' copied'); }catch{ toast('Copy failed'); } ta.remove();
+  }
+}
+function copyField(id, what){
+  const k=cardMap[id]; if(!k) return;
+  const title=k.title_suggestion||k.keyword;
+  const tags=(k.annotations||'').split(',').map(s=>s.trim()).filter(Boolean).join(', ');
+  if(what==='title') return copyText(title,'Title');
+  if(what==='tags') return copyText(tags,'Tags');
+  // all
+  const parts=[title, '', 'Keyword: '+k.keyword];
+  if(k.pin_description) parts.push('', k.pin_description);
+  if(tags) parts.push('', 'Tags: '+tags);
+  if(k.hashtags) parts.push('', k.hashtags);
+  copyText(parts.join('\n'),'Everything');
 }
 
 async function dismissTopic(id){
