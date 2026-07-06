@@ -218,41 +218,68 @@ function toolChip(el,name,info){ const d=document.createElement('div'); d.classN
   // start a fresh text block after a tool call so streamed text stays readable
   const prev=el.querySelector('.say.cur'); if(prev) prev.classList.remove('cur'); }
 
+// When a run finishes, reveal its results (the server keeps the run buffered for
+// ~60s so a refreshed page can reconnect and replay everything below).
+function finishRun(){
+  localStorage.removeItem('activeRunId');
+  const b = localStorage.getItem('pendingBaseline');
+  if(b!=null) localStorage.setItem('lastScanAfterId', b);
+  loadRadar(); loadQueue();
+}
+
+// Subscribe (or RE-subscribe after a refresh) to a run's SSE stream. The server
+// replays all buffered events first, so the live log is rebuilt on reconnect.
+function subscribe(runId, reconnect){
+  const stream=$('stream');
+  $('activity').classList.remove('hidden');
+  if(!reconnect) stream.innerHTML='';
+  else if(!stream.textContent.trim()){ const s=say(stream); s.textContent='↻ reconnecting to the running agent…\n'; }
+  $('actStatus').className='status busy'; $('actStatus').textContent = reconnect?'reconnected':'working…';
+  $('sessBadge').className='status busy'; $('sessBadge').textContent='working…';
+  setRunning(true);
+  if(es) es.close();
+  es = new EventSource('/api/agent/stream/'+runId);
+  es.addEventListener('session', ()=>{ $('sessBadge').className='status ok'; $('sessBadge').textContent='session active'; });
+  es.addEventListener('text', e=>{ say(stream).textContent += JSON.parse(e.data).text; stream.scrollTop=stream.scrollHeight; });
+  es.addEventListener('tool', e=>{ const t=JSON.parse(e.data); toolChip(stream, t.name, t.info); });
+  es.addEventListener('done', ()=>{ es.close(); setRunning(false);
+    $('actStatus').className='status ok'; $('actStatus').textContent='done';
+    $('sessBadge').className='status ok'; $('sessBadge').textContent='session active';
+    finishRun(); toast('Scan complete'); });
+  es.addEventListener('error', e=>{ let m=''; try{m=JSON.parse(e.data).error}catch{}
+    if(m==='run not found'){ es.close(); setRunning(false);
+      $('actStatus').className='status idle'; $('actStatus').textContent='ended';
+      $('sessBadge').className='status idle'; $('sessBadge').textContent='idle';
+      const s=say(stream); s.textContent += (s.textContent?'\n':'')+'⚠ This run already finished (or the server restarted) — its live log is no longer available. Its results, if any, are shown below.';
+      localStorage.removeItem('activeRunId'); loadRadar(); loadQueue(); return; }
+    const s=say(stream); if(m) s.textContent += (s.textContent?'\n':'')+'⚠ '+m;
+    es.close(); setRunning(false); $('actStatus').className='status err'; $('actStatus').textContent='error';
+    $('sessBadge').className='status err'; $('sessBadge').textContent='error'; finishRun(); });
+}
+
 async function run(){
   if(running) return;
   const prompt = buildPrompt($('ask').value.trim());
   const baseline = await currentMaxId();   // rows saved after this = this run's results
-  const stream=$('stream'); stream.innerHTML=''; $('activity').classList.remove('hidden');
-  $('actStatus').className='status busy'; $('actStatus').textContent='working…';
-  $('sessBadge').className='status busy'; $('sessBadge').textContent='working…';
-  setRunning(true);
-
-  fetch('/api/agent/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt})})
-    .then(r=>r.json()).then(r=>{
-      if(r.error){ throw new Error(r.error); }
-      es = new EventSource('/api/agent/stream/'+r.runId);
-      es.addEventListener('session', ()=>{ $('sessBadge').className='status ok'; $('sessBadge').textContent='session active'; });
-      es.addEventListener('text', e=>{ say(stream).textContent += JSON.parse(e.data).text; stream.scrollTop=stream.scrollHeight; });
-      es.addEventListener('tool', e=>{ const t=JSON.parse(e.data); toolChip(stream, t.name, t.info); });
-      es.addEventListener('done', ()=>{ es.close(); setRunning(false);
-        $('actStatus').className='status ok'; $('actStatus').textContent='done';
-        $('sessBadge').className='status ok'; $('sessBadge').textContent='session active';
-        localStorage.setItem('lastScanAfterId', String(baseline));
-        loadRadar(); loadQueue(); toast('Scan complete'); });
-      es.addEventListener('error', e=>{ let m=''; try{m=JSON.parse(e.data).error}catch{}
-        const s=say(stream); if(m) s.textContent += (s.textContent?'\n':'')+'⚠ '+m;
-        es.close(); setRunning(false); $('actStatus').className='status err'; $('actStatus').textContent='error';
-        $('sessBadge').className='status err'; $('sessBadge').textContent='error';
-        localStorage.setItem('lastScanAfterId', String(baseline)); loadRadar(); });
-    }).catch(e=>{ say(stream).textContent='Error: '+e.message; setRunning(false);
-      $('actStatus').className='status err'; $('actStatus').textContent='error';
-      $('sessBadge').className='status err'; $('sessBadge').textContent='error'; });
+  $('stream').innerHTML=''; $('activity').classList.remove('hidden');
+  const r = await fetch('/api/agent/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt})})
+    .then(r=>r.json()).catch(e=>({error:e.message}));
+  if(!r || r.error){ say($('stream')).textContent='Error: '+((r&&r.error)||'failed to start'); return; }
+  // Persist BEFORE streaming so a refresh mid-run can reconnect + still bucket results.
+  localStorage.setItem('pendingBaseline', String(baseline));
+  localStorage.setItem('activeRunId', r.runId);
+  subscribe(r.runId, false);
 }
 async function stop(){ if(es) es.close(); await fetch('/api/agent/stop',{method:'POST'}).catch(()=>{}); setRunning(false);
+  localStorage.removeItem('activeRunId');
   $('actStatus').className='status idle'; $('actStatus').textContent='stopped'; $('sessBadge').className='status idle'; $('sessBadge').textContent='idle'; }
 
 $('runBtn').onclick=run; $('stopBtn').onclick=stop;
 $('ask').addEventListener('input',()=>{ const t=$('ask'); t.style.height='auto'; t.style.height=Math.min(t.scrollHeight,140)+'px'; });
 $('ask').addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); run(); } });
+
 loadRadar(); loadQueue();
+// If a run was in progress when the page was closed/refreshed, reconnect to it.
+const _activeRun = localStorage.getItem('activeRunId');
+if(_activeRun) subscribe(_activeRun, true);
 </script>
