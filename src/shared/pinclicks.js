@@ -68,6 +68,78 @@ async function scrapeTable(page) {
   }).catch(() => []);
 }
 
+const BIG_MEDIA = /thespruce|bhg|betterhomes|hgtv|apartmenttherapy|foodnetwork|marthastewart|allrecipes|delish|tasteofhome|goodhousekeeping|realsimple|southernliving|countryliving/i;
+const ROUNDUP_URL = /\/\d+-|\bideas\b|\bbest-|roundup|listicle|-recipes\b/i;
+
+/** "Go inside" a keyword → scrape Top Pins (title, domain, date, saves) + verdict. */
+async function topPinsFor(page, keyword, { niche = 'recipe' } = {}) {
+  await page.goto('https://app.pinclicks.com/pins?search=' + encodeURIComponent(keyword), { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
+  await sleep(rand(7000, 10000));
+  if (looksBlocked(await page.title(), page.url())) return { blocked: true };
+
+  const pins = await page.$$eval('table tbody tr', (trs) => {
+    const rows = [];
+    for (const tr of trs.slice(0, 10)) {
+      const cells = [...tr.querySelectorAll('td')].map(td => (td.textContent || '').trim());
+      const rowText = cells.join(' ');
+      const domain = (rowText.match(/([a-z0-9-]+\.(?:com|net|org|co|us|ca|uk|blog))/i) || [])[1] || '';
+      const date = (rowText.match(/[A-Z][a-z]{2}\s+\d{1,2},\s+\d{4}/) || [])[0] || '';
+      // title = text after "Open preview" and before the domain (strip the checkbox label)
+      let title = rowText
+        .replace(/Select\/deselect item \d+ for bulk actions\.?/i, '')
+        .replace(/Open preview/i, '').trim();
+      if (domain) title = title.slice(0, title.indexOf(domain));
+      title = title.replace(/\s+/g, ' ').trim().slice(0, 90);
+      // saves = largest plain integer among cells (pin-id lives in an aria-label, not a cell)
+      let saves = 0;
+      for (const c of cells) { const n = c.replace(/,/g, ''); if (/^\d{1,7}$/.test(n)) saves = Math.max(saves, parseInt(n, 10)); }
+      if (title) rows.push({ title, domain, date, saves });
+    }
+    return rows;
+  }).catch(() => []);
+  if (!pins.length) return { blocked: false, pins: [], competition: 0.1, verdict: 'empty SERP — likely wide open (verify keyword is real)' };
+
+  // derive signals
+  const nowMs = Date.parse('2026-07-06'); // stamped; scripts can't use Date.now()
+  const kwWords = keyword.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+  let exactTop5 = 0, freshHighSave = 0, staleCount = 0, bigMedia = 0, roundupCount = 0;
+  const savesArr = [];
+  pins.forEach((p, i) => {
+    savesArr.push(p.saves);
+    const ageMonths = p.date ? Math.max(0.5, (nowMs - Date.parse(p.date)) / (30 * 864e5)) : 24;
+    const velocity = p.saves / ageMonths;
+    const tl = p.title.toLowerCase();
+    const exact = kwWords.filter(w => tl.includes(w)).length / kwWords.length;
+    if (i < 5 && exact >= 0.7) exactTop5++;
+    if (ageMonths < 3 && p.saves > 500) freshHighSave++;
+    if (ageMonths > 12) staleCount++;
+    if (BIG_MEDIA.test(p.domain)) bigMedia++;
+    if (ROUNDUP_URL.test(p.title) || /\b\d{2}\b/.test(p.title)) roundupCount++;
+    p.ageMonths = Math.round(ageMonths); p.velocity = Math.round(velocity);
+  });
+  const sorted = [...savesArr].sort((a, b) => a - b);
+  const median = sorted[Math.floor(sorted.length / 2)] || 0;
+  const weak = savesArr.filter(s => s < (niche === 'recipe' ? 150 : 100)).length;
+
+  // competition estimate (0 open → 1 locked)
+  let comp = 0.4;
+  if (exactTop5 >= 4) comp += 0.35; else if (exactTop5 <= 1) comp -= 0.2;
+  if (freshHighSave >= 1) comp += 0.3;
+  if (median > 1000) comp += 0.2; else if (median < (niche === 'recipe' ? 300 : 150)) comp -= 0.2;
+  if (staleCount >= 3) comp -= 0.15;
+  if (bigMedia >= 3) comp += 0.2;
+  if (weak >= 3) comp -= 0.15;
+  comp = Math.max(0.05, Math.min(1, comp));
+
+  const verdict = comp <= 0.35 ? 'WINNABLE' : comp <= 0.6 ? 'maybe (needs a better angle)' : 'LOCKED — skip / go longer-tail';
+  return {
+    blocked: false, pins,
+    competition: Math.round(comp * 100) / 100,
+    verdict,
+    signals: { medianSaves: median, exactMatchTop5: exactTop5, freshHighSave, staleCount, bigMedia, weakPins: weak, roundupCount },
+  };
+}
+
 /**
  * Enrich a shortlist of keywords with PinClicks volume + related terms.
  * @param {string[]} keywords  the shortlist (capped)
@@ -76,7 +148,7 @@ async function scrapeTable(page) {
  *   results: [{ keyword, volume, related:[{keyword,volume}] }]
  */
 export async function enrichKeywords(keywords, opts = {}) {
-  const { max = 8, minDelayMs = 18000, maxDelayMs = 35000, force = false } = opts;
+  const { max = 8, minDelayMs = 18000, maxDelayMs = 35000, force = false, withTopPins = false, niche = 'recipe' } = opts;
   const requested = [...new Set((keywords || []).map(k => String(k).trim().toLowerCase()).filter(Boolean))].slice(0, max);
   if (!requested.length) return { results: [], blocked: false, done: true };
 
@@ -127,9 +199,20 @@ export async function enrichKeywords(keywords, opts = {}) {
         volume: self?.volume ?? null,
         related: rows.filter(r => r.keyword !== (self?.keyword)).slice(0, 12),
       };
+      // optionally "go inside" → Top Pins competition read
+      if (withTopPins) {
+        const tp = await topPinsFor(page, kw, { niche });
+        if (tp.blocked) { blocked = true; Logger.warn(`[pinclicks] blocked in Top Pins for "${kw}"`); results.push(rec); cachePut(kw, rec); break; }
+        rec.competition = tp.competition;
+        rec.verdict = tp.verdict;
+        rec.topPins = tp.signals;
+        rec.topPinsSample = (tp.pins || []).slice(0, 5).map(p => ({ title: p.title.slice(0, 60), domain: p.domain, saves: p.saves, ageMonths: p.ageMonths }));
+        Logger.info(`[pinclicks] ${kw} → vol ${self?.volume ?? '?'} | comp ${tp.competition} ${tp.verdict} | medSaves ${tp.signals?.medianSaves}, exact ${tp.signals?.exactMatchTop5}/5 (${i + 1}/${list.length})`);
+      } else {
+        Logger.info(`[pinclicks] ${kw} → vol ${self?.volume ?? '?'}, ${rows.length} rows (${i + 1}/${list.length})`);
+      }
       results.push(rec);
       cachePut(kw, rec);   // remember so we never re-browse this keyword within the TTL
-      Logger.info(`[pinclicks] ${kw} → vol ${self?.volume ?? '?'}, ${rows.length} rows (${i + 1}/${list.length})`);
 
       if (i < list.length - 1) await sleep(rand(minDelayMs, maxDelayMs)); // human gap
     }

@@ -78,10 +78,15 @@ automation — it already blocked one profile):
   **Settings → Agent browser → Profiles**, add a fresh profile, and log into PinClicks
   there (a blocked profile stays blocked; a new one usually gets through).
 
-Only fall back to manually browsing app.pinclicks.com for things `pinclicks_enrich`
-can't give you — **Top Pins saves/freshness for the competition read** (the one thing
-you still must eyeball), Account Explorer, annotations. Do that browsing gently too, on
-the final 2–3 picks only.
+**For the competition read, call `pinclicks_enrich` with `withTopPins: true`** on your
+final shortlist. It "goes inside" each keyword (opens Top Pins) and returns a real
+competition verdict computed with the rules below: `{competition 0-1, verdict,
+signals:{medianSaves, exactMatchTop5, freshHighSave, staleCount, bigMedia, weakPins},
+topPinsSample}`. Use its `competition` value directly as the sub-signal and quote its
+signals in `source_notes`. Pass `niche:'recipe'` or `'home'` so the save thresholds fit.
+
+Only fall back to manually browsing app.pinclicks.com for things the tool can't give —
+Account Explorer competitor mining, annotation-hop clustering. Do that gently, final picks only.
 
 ### PinClicks manual playbook (Top Pins competition read + extras)
 The research profile is logged in. The left nav (real URLs) is your toolbox — don't

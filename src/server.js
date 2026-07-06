@@ -183,7 +183,7 @@ app.post('/api/pinclicks/enrich', async (req, res) => {
     if (isLoginSessionOpen()) await closeLoginSession();
     const { enrichKeywords } = await import('./shared/pinclicks.js');
     const b = req.body || {};
-    res.json(await enrichKeywords(b.keywords || [], { max: b.max ?? 8 }));
+    res.json(await enrichKeywords(b.keywords || [], { max: b.max ?? 8, withTopPins: !!b.withTopPins, niche: b.niche || 'recipe', force: !!b.force }));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
