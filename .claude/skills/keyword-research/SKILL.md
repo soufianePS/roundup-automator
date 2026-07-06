@@ -237,10 +237,21 @@ Each sub-signal is 0–1:
 
 Output an **opportunity score**, NOT a virality promise. Be honest.
 
-### 4. Write annotations for the good ones
-- **title_suggestion**: `Number + power adjective + exact keyword + audience/benefit`,
-  e.g. "25 Cozy Small Living Room Ideas (Renter-Friendly)". Odd numbers + a
-  parenthetical hook lift clicks.
+### 4. Write annotations for the good ones — NOT everything is a roundup
+Don't default every topic to a numbered listicle. Read what the user actually asked for:
+- **Roundup** ("ideas", "list", "best X", a plural theme, or the user says "roundup") →
+  `title_suggestion`: `Number + power adjective + exact keyword + audience/benefit`,
+  e.g. "25 Cozy Small Living Room Ideas (Renter-Friendly)". Odd numbers + a parenthetical
+  hook lift clicks. Set `type: 'roundup'` when you `add_topic`.
+- **Single / standalone article** (the user names one specific topic, asks a how-to
+  question, or explicitly says "just one" / "not a roundup" / "single article") → write
+  a normal single-topic title with NO big number, e.g. "How to Style a Small Living Room
+  Without Buying New Furniture" or "The Cozy Fall Porch Look Everyone's Copying This
+  Year". Set `type: 'how-to'` or `type: 'single'` (pick whichever fits) when you
+  `add_topic` — never force it into a roundup shape.
+- When unclear, default to whichever format matches how the keyword itself reads (a
+  broad theme → roundup; a specific question or single idea → single) rather than
+  always assuming roundup.
 - **pin_description**: 2–3 natural sentences with the exact keyword once + 2–3 related
   terms **written as plain language, not a keyword list**. Pinterest is a search
   engine — sentence-form keywords rank; keyword-stuffing gets suppressed.
@@ -273,8 +284,9 @@ Put a one-line note in `source_notes` on what you saw AND the timing verdict, e.
 "Trends 78, rising cluster, peaks Nov → publish by ~mid-Sep; PinClicks vol solid,
 small blogs ranking, low competition".
 
-For the strongest keywords, also `add_topic(keyword, title_suggestion)` so they
-enter the article queue.
+For the strongest keywords, also `add_topic(keyword, title_suggestion, type)` — set
+`type` to `'roundup'` or `'how-to'`/`'single'` per the format you decided above, so they
+enter the article queue as the right content shape, not always a roundup.
 
 ## 2025–2026 reality — read before you overpromise
 The platform changed; calibrate expectations and strategy accordingly.

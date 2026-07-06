@@ -60,7 +60,7 @@
     <!-- Real topic queue -->
     <div class="card" id="queue" style="scroll-margin-top:20px"><div class="core">
       <div class="card-h"><h2>Topic Queue</h2><span class="hint" id="queueHint">—</span></div>
-      <div id="queueBody"><div class="empty" style="padding:26px;color:var(--faint)">Queue a topic from the cards above to line it up for a roundup.</div></div>
+      <div id="queueBody"><div class="empty" style="padding:26px;color:var(--faint)">Queue a topic from the cards above to add it to the article queue.</div></div>
     </div></div>
 
     <p class="note">viral potential is an opportunity estimate from Pinterest Trends + PinClicks signals — not a guarantee.</p>
@@ -198,7 +198,7 @@ async function loadQueue(){
   if(!Array.isArray(rows)) rows=[];
   $('queueHint').textContent = rows.length ? `${rows.length} items` : '0 items';
   const body=$('queueBody');
-  if(!rows.length){ body.innerHTML='<div class="empty" style="padding:26px;color:var(--faint)">Queue a topic from the cards above to line it up for a roundup.</div>'; return; }
+  if(!rows.length){ body.innerHTML='<div class="empty" style="padding:26px;color:var(--faint)">Queue a topic from the cards above to add it to the article queue.</div>'; return; }
   const pill = st => ({pending:'pending',researching:'run',writing:'run',done:'done',error:'err'}[st]||'pending');
   body.innerHTML = rows.slice(0,12).map(t=>`<div class="row"><div class="t">${esc(t.title||t.keyword)}<small>${esc(t.type||'roundup')} · ${esc(t.keyword)}</small></div><span class="pill ${pill(t.status)}">${esc(t.status||'pending')}</span></div>`).join('');
 }
