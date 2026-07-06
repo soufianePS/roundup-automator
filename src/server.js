@@ -116,10 +116,16 @@ app.post('/api/pinterest/probe', async (req, res) => {
 });
 
 // ── Agent (headless Claude on the user's subscription) ──
-app.post('/api/agent/run', (req, res) => {
+app.post('/api/agent/run', async (req, res) => {
   try {
     const { prompt, sessionId } = req.body || {};
     if (!prompt || !prompt.trim()) return res.status(400).json({ error: 'prompt required' });
+    // Free the research profile: only ONE chromium can hold it at a time, so if the
+    // Settings login window is open the agent's browser can't launch. Close it first.
+    if (isLoginSessionOpen()) {
+      try { await closeLoginSession(); Logger.info('[agent] closed login window so the agent can use the browser'); }
+      catch (e) { Logger.warn(`[agent] could not close login window: ${e.message}`); }
+    }
     const runId = startAgentRun(prompt, { sessionId: sessionId || null, cwd: PROJECT_ROOT });
     res.json({ runId });
   } catch (e) { res.status(500).json({ error: e.message }); }
