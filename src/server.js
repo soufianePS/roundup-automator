@@ -8,7 +8,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { Logger } from './shared/logger.js';
 import { getDb } from './db/db.js';
-import { Sites, Topics, KeywordScores } from './db/repos.js';
+import { Sites, Topics, KeywordScores, KeywordBank } from './db/repos.js';
 import { WordPress } from './shared/wordpress.js';
 import { DolphinAnty } from './shared/dolphin.js';
 import { probePinterestAccount } from './shared/pinterest-probe.js';
@@ -186,6 +186,25 @@ app.post('/api/pinclicks/enrich', async (req, res) => {
     res.json(await enrichKeywords(b.keywords || [], { max: b.max ?? 8, withTopPins: !!b.withTopPins, niche: b.niche || 'recipe', force: !!b.force }));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+
+// ── Keyword bank: bulk export (collect) + query (offline discovery) ──
+app.post('/api/pinclicks/export', async (req, res) => {
+  try {
+    if (isLoginSessionOpen()) await closeLoginSession();
+    const { exportSeeds } = await import('./shared/pinclicks-export.js');
+    res.json(await exportSeeds((req.body || {}).seeds || []));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.get('/api/keywords/bank', (req, res) => {
+  try {
+    const q = req.query || {};
+    res.json(KeywordBank.query({
+      like: q.like, minVolume: Number(q.minVolume) || 0, maxVolume: Number(q.maxVolume) || null,
+      exclude: q.exclude ? String(q.exclude).split(',') : null, limit: Number(q.limit) || 200,
+    }));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.get('/api/keywords/bank/status', (req, res) => { try { res.json({ total: KeywordBank.count(), seeds: KeywordBank.seeds() }); } catch (e) { res.status(500).json({ error: e.message }); } });
 
 // ── read-only helpers for the dashboard ──
 app.get('/api/topics', (req, res) => { try { res.json(Topics.list()); } catch (e) { res.status(500).json({ error: e.message }); } });

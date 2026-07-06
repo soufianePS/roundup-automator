@@ -18,12 +18,13 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 
 import { getDb } from '../db/db.js';
-import { Sites, Topics, KeywordScores, Articles, ArticleItems, Pins } from '../db/repos.js';
+import { Sites, Topics, KeywordScores, Articles, ArticleItems, Pins, KeywordBank } from '../db/repos.js';
 import { WordPress } from '../shared/wordpress.js';
 import { DolphinAnty } from '../shared/dolphin.js';
 import { probePinterestAccount } from '../shared/pinterest-probe.js';
 import { harvestTrends, fetchCurves, weeklyWindowsLastYear, INTEREST_IDS } from '../shared/trends-api.js';
 import { enrichKeywords } from '../shared/pinclicks.js';
+import { exportSeeds } from '../shared/pinclicks-export.js';
 import { secretOpt } from '../config.js';
 import { Logger } from '../shared/logger.js';
 
@@ -184,6 +185,28 @@ server.tool('trend_curves',
 
 server.tool('list_trend_categories', 'List the valid Pinterest Trends interest/category names usable with harvest_trends.', {},
   wrap(() => Object.keys(INTEREST_IDS)));
+
+// ─────────────────────────── Keyword bank (bulk export → offline discovery) ───────────────────────────
+server.tool('pinclicks_export_seeds',
+  'BULK-EXPORT PinClicks Keyword Explorer for a FEW broad seeds → ~1000 keywords+volumes each into the local keyword bank. This is the CHEAP high-yield half of PinClicks (one page load + one Export per seed). Do this ONCE per topic area, then use query_keyword_bank (offline, instant, free) to discover/shortlist instead of looping PinClicks live. Pass 3-8 BROAD seeds (e.g. "pumpkin", "fall dinner", "chicken"), NOT narrow long-tails. Needs the profile free; slow + human-paced by design. Does NOT fetch Top Pins competition — use pinclicks_enrich(withTopPins) on the final shortlist for that.',
+  { seeds: z.array(z.string()).min(1).max(12) },
+  wrap(async ({ seeds }) => exportSeeds(seeds)));
+
+server.tool('query_keyword_bank',
+  'OFFLINE discovery over the local keyword bank (instant, free, zero PinClicks hits). Filter/sort the exported keywords to build a shortlist WITHOUT live looping. Use this as the main discovery step after pinclicks_export_seeds.',
+  {
+    like: z.string().optional().describe('substring the keyword must contain (e.g. "muffin").'),
+    anyOf: z.array(z.string()).optional().describe('keyword must contain at least one of these (e.g. ["recipe","how to"]).'),
+    minVolume: z.number().int().optional().describe('min volume (new-blog floor ~1000).'),
+    maxVolume: z.number().int().optional().describe('max volume (new-blog ceiling ~10000-15000 to avoid locked heads).'),
+    exclude: z.array(z.string()).optional().describe('drop keywords containing any of these (e.g. ["ideas","best","inspo"] to skip roundups).'),
+    sort: z.enum(['volume', 'keyword']).optional(),
+    limit: z.number().int().optional(),
+  },
+  wrap((q) => KeywordBank.query(q)));
+
+server.tool('keyword_bank_status', 'How many keywords are banked + which seeds have been exported (freshness).', {},
+  wrap(() => ({ total: KeywordBank.count(), seeds: KeywordBank.seeds() })));
 
 server.tool('pinclicks_enrich',
   'HUMAN-PACED PinClicks lookup for a SMALL shortlist (real search volume + related long-tails per keyword). Drives the logged-in browser slowly and scrapes the rendered table — deliberately slow (~25s/keyword) and CAPPED so it never trips PinClicks\' Cloudflare block. Rules: (1) only pass the FINAL shortlist harvest_trends produced (≤8 keywords), never a big list; (2) needs the browser profile FREE — close the Settings login window and your own playwright browser first; (3) if it returns blocked:true, tell the user to add a fresh profile in Settings → Profiles and log in there. Returns real PinClicks volumes to feed `demand` + related terms to expand.',

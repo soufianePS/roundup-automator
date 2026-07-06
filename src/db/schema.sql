@@ -58,6 +58,19 @@ CREATE TABLE IF NOT EXISTS keyword_scores (
 );
 CREATE INDEX IF NOT EXISTS idx_keyword_scores_kw ON keyword_scores(keyword);
 
+-- Local keyword bank: bulk-exported from PinClicks Keyword Explorer (1000 rows per
+-- export). The agent queries THIS offline to discover/shortlist instead of looping
+-- PinClicks live. Accumulates across scans → most scans need few/no live hits.
+CREATE TABLE IF NOT EXISTS keyword_bank (
+  keyword       TEXT PRIMARY KEY,          -- lowercased
+  volume        INTEGER,                   -- PinClicks search volume (comparative)
+  url           TEXT,                      -- pinterest idea page
+  taxonomy      TEXT,
+  source_seed   TEXT,                      -- which export seed surfaced it
+  exported_at   TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_bank_vol ON keyword_bank(volume);
+
 -- Published roundup articles.
 CREATE TABLE IF NOT EXISTS articles (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,

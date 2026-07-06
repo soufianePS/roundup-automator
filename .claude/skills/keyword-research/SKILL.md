@@ -63,11 +63,25 @@ Two consequences to internalize:
    treat it as **directional**, and cross-check with an external proxy (Google Keyword
    Planner / Keywords Everywhere, or the Google-volume × Pinterest-trend heuristic).
 
-## PinClicks — FAST PATH FIRST, then careful browser
-**Volume + related terms: use `pinclicks_enrich` (roundup MCP), not manual browsing.**
-It drives the logged-in browser human-paced and scrapes real PinClicks volume + related
-long-tails for a shortlist. RULES (PinClicks is behind Cloudflare and WILL block bulk
-automation — it already blocked one profile):
+## PinClicks — BANK FIRST (offline), enrich the shortlist only
+The efficient path separates cheap bulk *collection* from free *analysis*:
+1. **`keyword_bank_status`** — see what's already banked. If your topic area is covered
+   and fresh, skip straight to step 3 (zero live PinClicks hits).
+2. **`pinclicks_export_seeds(["broad seed", ...])`** — if not covered, bulk-export a FEW
+   broad seeds (3–8). Each export = ~1000 keywords+volumes into the local bank in one
+   cheap page load. Do NOT export narrow long-tails or dozens of seeds.
+3. **`query_keyword_bank({anyOf, exclude, minVolume, maxVolume, like})`** — OFFLINE,
+   instant, free. This is your main discovery step: filter the bank for specific
+   single-topic phrasing (`anyOf:["recipe","how to","muffins"]`), drop roundups
+   (`exclude:["ideas","best","inspo"]`), and apply the new-blog volume band
+   (`minVolume:1000, maxVolume:15000`). Sort by volume. Pick ~8 candidates HERE — no
+   live looping for discovery.
+4. **`pinclicks_enrich(shortlist, {withTopPins:true, niche})`** — ONLY on those ~8 final
+   candidates, to get the real Top-Pins competition verdict. This is the one expensive
+   live step; keep it small.
+
+**Legacy live path** (`pinclicks_enrich` without a bank) still works but is slower — the
+bank is preferred. RULES (PinClicks is behind Cloudflare and WILL block bulk automation):
 - Pass **only your final shortlist** (≤8 keywords) that `harvest_trends` already narrowed
   — NEVER a big list. Discovery happens in Trends; PinClicks just confirms volume + finds
   long-tails for the few winners.
