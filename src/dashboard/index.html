@@ -29,11 +29,11 @@
     <!-- Radar: prompt + live agent activity -->
     <div class="card radar" id="radar" style="scroll-margin-top:20px"><div class="core">
       <div class="ask">
-        <textarea id="ask" rows="1" placeholder="Optional: focus the scan — e.g. &quot;Halloween &amp; fall porch decor&quot; or &quot;kids lunchbox ideas&quot;. Leave blank for a full family/home scan."></textarea>
-        <button class="btn primary" id="runBtn">Find 15 topics to work on now <span class="cap">→</span></button>
+        <textarea id="ask" rows="1" placeholder="Tell the agent what you want — e.g. “give me 3 fall porch decor articles to work on” or “10 low-competition Halloween topics”.  (Enter to run)"></textarea>
+        <button class="btn primary" id="runBtn">Find topics <span class="cap">→</span></button>
         <button class="btn danger hidden" id="stopBtn">Stop</button>
       </div>
-      <p class="prompthint">The agent opens <b>Pinterest Trends</b> in its browser, reads the graphs (Growing &amp; Seasonal leaderboards, 2-year curves, related terms), scores each idea's <b>viral potential</b>, and works out when to publish. It runs on your Claude subscription — no paid API.</p>
+      <p class="prompthint">Say <b>how many</b> and <b>on what</b>. The agent reads <b>Pinterest Trends</b> + <b>PinClicks</b> (incl. Top Pins for competition), scores each idea's <b>viral potential</b>, and works out when to publish. Runs on your Claude subscription — no paid API.</p>
 
       <div class="activity hidden" id="activity">
         <div class="ah"><b>Agent activity</b><span class="status busy" id="actStatus">working…</span></div>
@@ -54,7 +54,7 @@
     </div>
     <div class="radar-grid" id="grid"></div>
     <div class="empty card hidden" id="emptyState"><div class="core" style="padding:38px;text-align:center;color:var(--faint)">
-      No scan yet. Hit <b>“Find 15 topics to work on now”</b> and the agent will research Pinterest Trends and fill this in.
+      No scan yet. Type what you want (e.g. <b>“give me 3 fall porch decor articles to work on”</b>) and hit <b>Find topics</b> — the agent will research it and fill this in.
     </div></div>
 
     <!-- Real topic queue -->
@@ -74,11 +74,18 @@ const esc = s => (s==null?'':String(s)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&
 const norm01 = v => v==null ? null : (v>1 ? v/100 : v);   // sub-signals are 0–1; tolerate 0–100
 let es=null, running=false;
 
-const DEFAULT_PROMPT = `Find the 15 best family/home blog topics I should work on RIGHT NOW to get Pinterest traffic. Use your keyword-research skill.
+function buildPrompt(userText){
+  const ask = (userText && userText.trim())
+    ? userText.trim()
+    : 'Find the best family/home blog topics I should work on right now to get Pinterest traffic (pick a sensible number, around 10-15).';
+  return `${ask}
 
-Open Pinterest Trends (trends.pinterest.com) in your browser and actually explore it before deciding — check the Growing and Seasonal leaderboards, open the 2-year interest graphs, use the 4-keyword comparison and related terms, and set the region to United States. Ground every pick in what the graphs show for today's date, not guesses.
+Do EXACTLY what I asked above — honor the number of topics and the subject I named. Use your keyword-research skill.
 
-For each of the 15 topics give an HONEST viral-potential score (0–100) plus competition, momentum, the peak month, and a concrete publish-by date from the seasonal lead-time rule. Save every one with save_keyword_score (opportunity_score, competition, momentum, seasonal_timing, peak_month, publish_by, title_suggestion, pin_description, source_notes). When finished, give me a short ranked summary of what you saved.`;
+Open Pinterest Trends and PinClicks in your browser and actually read them before deciding: check the Growing/Seasonal leaderboards, the 2-year interest graphs, related terms, region = United States; in PinClicks open Top Pins sorted by saves to judge competition. Ground every pick in what the graphs/SERP show for today's date.
+
+Save each topic with save_keyword_score including: opportunity_score (honest 0-100, gated by competition), ctr_intent, competition, momentum, seasonal_timing, peak_month, publish_by, title_suggestion, pin_description, annotations (PinClicks tags), top_pin_saves, search_volume, and trend_points. When finished, give me a short ranked summary of what you saved.`;
+}
 
 // month name for the eyebrow
 try { $('eyebrow').textContent = 'Trend Radar · ' + new Date().toLocaleString('en-US',{month:'long'}) + ' window'; } catch {}
@@ -157,9 +164,19 @@ function card(k){
   </article>`;
 }
 
+async function currentMaxId(){
+  try{ const r = await fetch('/api/keywords/latest?limit=1').then(r=>r.json()); return (Array.isArray(r)&&r[0]) ? r[0].id : 0; }catch{ return 0; }
+}
+
 async function loadRadar(){
-  let rows=[]; try{ rows = await fetch('/api/keywords/latest?limit=15').then(r=>r.json()); }catch{}
+  let rows=[]; try{ rows = await fetch('/api/keywords/latest?limit=50').then(r=>r.json()); }catch{}
   if(!Array.isArray(rows)) rows=[];
+  // Show only the LAST run's results (rows created after the baseline id we saved
+  // when that run started). Falls back to the newest 15 if we have no marker.
+  const afterId = Number(localStorage.getItem('lastScanAfterId')||0);
+  let shown = afterId ? rows.filter(r => r.id > afterId) : rows.slice(0,15);
+  if(afterId && !shown.length) shown = rows.slice(0,15);
+  rows = shown;
   rows.sort((a,b)=>(b.opportunity_score??0)-(a.opportunity_score??0));
   const grid=$('grid');
   if(!rows.length){ grid.innerHTML=''; $('emptyState').classList.remove('hidden'); $('kpis').hidden=true; $('gridHint').textContent=''; return; }
@@ -201,10 +218,10 @@ function toolChip(el,name,info){ const d=document.createElement('div'); d.classN
   // start a fresh text block after a tool call so streamed text stays readable
   const prev=el.querySelector('.say.cur'); if(prev) prev.classList.remove('cur'); }
 
-function run(){
+async function run(){
   if(running) return;
-  const focus = $('ask').value.trim();
-  const prompt = focus ? DEFAULT_PROMPT + `\n\nFocus this scan on: ${focus}` : DEFAULT_PROMPT;
+  const prompt = buildPrompt($('ask').value.trim());
+  const baseline = await currentMaxId();   // rows saved after this = this run's results
   const stream=$('stream'); stream.innerHTML=''; $('activity').classList.remove('hidden');
   $('actStatus').className='status busy'; $('actStatus').textContent='working…';
   $('sessBadge').className='status busy'; $('sessBadge').textContent='working…';
@@ -220,11 +237,13 @@ function run(){
       es.addEventListener('done', ()=>{ es.close(); setRunning(false);
         $('actStatus').className='status ok'; $('actStatus').textContent='done';
         $('sessBadge').className='status ok'; $('sessBadge').textContent='session active';
+        localStorage.setItem('lastScanAfterId', String(baseline));
         loadRadar(); loadQueue(); toast('Scan complete'); });
       es.addEventListener('error', e=>{ let m=''; try{m=JSON.parse(e.data).error}catch{}
         const s=say(stream); if(m) s.textContent += (s.textContent?'\n':'')+'⚠ '+m;
         es.close(); setRunning(false); $('actStatus').className='status err'; $('actStatus').textContent='error';
-        $('sessBadge').className='status err'; $('sessBadge').textContent='error'; loadRadar(); });
+        $('sessBadge').className='status err'; $('sessBadge').textContent='error';
+        localStorage.setItem('lastScanAfterId', String(baseline)); loadRadar(); });
     }).catch(e=>{ say(stream).textContent='Error: '+e.message; setRunning(false);
       $('actStatus').className='status err'; $('actStatus').textContent='error';
       $('sessBadge').className='status err'; $('sessBadge').textContent='error'; });
@@ -234,6 +253,6 @@ async function stop(){ if(es) es.close(); await fetch('/api/agent/stop',{method:
 
 $('runBtn').onclick=run; $('stopBtn').onclick=stop;
 $('ask').addEventListener('input',()=>{ const t=$('ask'); t.style.height='auto'; t.style.height=Math.min(t.scrollHeight,140)+'px'; });
-$('ask').addEventListener('keydown',e=>{ if(e.key==='Enter'&&(e.metaKey||e.ctrlKey)){ e.preventDefault(); run(); } });
+$('ask').addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); run(); } });
 loadRadar(); loadQueue();
 </script>
