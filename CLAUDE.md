@@ -65,17 +65,38 @@ NO AI images in the article body — real sourced photos + credit links only.
 gets ~zero reach on a locked SERP regardless of volume. Optimize for pins that win
 distribution + get CLICKS, not just for keywords.
 
-- **Scoring: competition GATES the score (multiply), never just adds.**
-  `score = 100 * (0.25 demand + 0.20 ctr_intent + 0.20 seasonalTiming + 0.20 momentum + 0.15 fit) * (1-competition)^1.5`
-  (see `.claude/skills/keyword-research/SKILL.md`). `ctr_intent` is a first-class signal:
-  solution/list/how-to/budget phrasing = clicks; pure aesthetic/mood terms = saves-only,
-  little traffic. `demand` = PinClicks volume as an **order-of-magnitude qualification
-  filter only** (it's from the Ads API — not literal organic counts). Trends = timing truth.
+- **Scoring: competition GATES the score (multiply), never just adds**, and for THIS
+  (brand-new) account the gate is a harsh tier, not a flat exponent:
+  `base = 0.20 demand + 0.25 ctr_intent + 0.20 seasonalTiming + 0.20 momentum + 0.15 fit`;
+  `competition ≥0.6 → reject; 0.3–0.6 → base*(1-comp)^2.2; <0.3 → base*(1-comp)^1.5`
+  (see `.claude/skills/keyword-research/SKILL.md`, current full logic + rationale).
+  `ctr_intent` is judged from the SERP itself (do top pins link out, or does the image
+  alone fully satisfy the search?) not just phrasing. `demand` = PinClicks volume as an
+  **order-of-magnitude qualification filter only**. Trends = timing truth. Relax the
+  gate toward `^1.5` flat later, once the account has real traction/history — track via
+  the `performance` table (predicted score vs actual outbound clicks) and adjust.
 - **Competition read from Top-10 SAVES first** (>~1000 = locked, <~100 = open), then pin
-  freshness (>12–18mo & still ranking = beatable), then pinner authority (claimed-domain
-  globe), then visual sameness. No native difficulty score exists.
-- **Timing: publish 60–90 days before the seasonal peak** (algorithm indexes + ages pins;
-  TransActV2 remembers year-over-year). Publish at peak = too late.
+  freshness (>12–18mo & still ranking = beatable), then pinner authority — **if ranking
+  accounts are major media (The Spruce, BHG, HGTV, Apartment Therapy) treat as locked
+  regardless of that pin's individual save count** (domain trust beats a lone metric) —
+  then visual sameness / format match. No native difficulty score exists.
+- **Content-feasibility gate (roundups):** before committing to a topic, confirm ~1.5×
+  the needed real, creditable photos are actually findable (35–40 candidates for a
+  25-item roundup) — a great keyword with no sourceable real images is unusable here.
+- **Timing: publish 60–90 days before the seasonal peak**, and for THIS new account bias
+  toward the early end of that window (nearer 90 days) since indexing/trust takes
+  longer to build (algorithm indexes + ages pins; TransActV2 remembers year-over-year).
+  Publish at peak = too late.
+- **New-account topic strategy:** narrower + deeper clusters (e.g. all "small space
+  living" adjacent) rather than scattering across unrelated niches for the first ~60
+  days — Pinterest needs a clean signal of what the domain is about. One article per
+  intent CLUSTER, not one article per keyword — plan multiple pin angles per article.
+- **Rich Pins caveat:** Pinterest does not reliably treat "mostly images, little text"
+  pages as proper article pages for Rich Pin purposes. Roundup articles need real
+  written commentary per item (not just an image + caption) to qualify — a note for
+  the future article-generation skill, not just keyword research. Also: board title
+  must match the pin's root keyword (Pinterest ranks boards before pins) — keep in mind
+  when the pins module builds board architecture.
 - **New-account sandbox is real (3–6 months to meaningful traffic).** The pins module MUST:
   1. **Manual warm-up days 1–5** — no domain claim, no automation; pin others' content,
      behave human (anti-spam gate).

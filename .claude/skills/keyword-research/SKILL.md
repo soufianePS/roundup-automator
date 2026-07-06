@@ -97,14 +97,31 @@ the top ~10 in this priority order (validated by cross-AI review):
    spots = wide open (≈ 0.1–0.3).**
 2. **Freshness / created dates.** Top pins all **>12–18 months old and still ranking =
    stale SERP = beatable** with a modern pin. A wall of pins <3 months old holding = hard.
-3. **Pinner authority.** A claimed-domain globe / verified blog on the top spots = serious
-   competition. Unclaimed personal profiles or image-aggregator accounts ranking = a real
-   opening for an optimized blog.
-4. **Visual sameness.** If every top pin has the same composition (e.g. all tight
-   pumpkin close-ups), a different angle (wide shot, clear text-overlay infographic)
-   can break in — and it lowers effective competition.
-Set the `competition` sub-signal mainly from #1, adjusted down by #2/#3/#4. Locked SERP
-(high saves + fresh + claimed domains) → **skip and go longer-tail.**
+3. **Pinner authority / domain lockout.** A claimed-domain globe / verified blog on the
+   top spots = serious competition. **If the ranking accounts are major established
+   media** (e.g. The Spruce, Better Homes & Gardens, HGTV, Apartment Therapy, Good
+   Housekeeping) treat it as locked REGARDLESS of an individual pin's save count — a
+   12-save pin from a media giant still out-competes you on domain trust. Unclaimed
+   personal profiles or small independent blogs ranking = a real opening.
+4. **Visual sameness / format match.** If every top pin has the same composition
+   (e.g. all tight pumpkin close-ups) or the same format (all single hero photos, all
+   collages, all text-overlay listicles, all video pins), note which format dominates
+   — a different angle or format you can actually execute well can break in. If the
+   dominant format is one your pipeline can't beat (e.g. all professional collage
+   photography and yours would be a rough AI edit), that raises effective competition.
+Set the `competition` sub-signal mainly from #1, adjusted down by #2, up hard by #3 if
+media-dominated, and by #4. Locked SERP (high saves + fresh + big-media domains) →
+**skip and go longer-tail.**
+
+### Content-feasibility gate (roundups only) — can we actually source this?
+Before approving a roundup topic, confirm you can find **~1.5× the needed real,
+creditable photos** — for a 25-item roundup, you should be able to identify roughly
+35–40 plausible real-image candidates (from small blogs/creators, not locked
+big-brand-only imagery) before committing. If a topic's real images mostly come from
+magazines/designers/retailers with restrictive usage terms and no small-creator
+alternative exists, downgrade `fit` and say so in `source_notes` — a great keyword
+with no sourceable images is not actually usable for this pipeline (real photos only,
+credit-linked, no AI in the article body).
 
 ### HARD RULE — avoid high-competition keywords
 Do NOT save a keyword as a strong pick if its Top Pins are dominated by big accounts
@@ -179,8 +196,21 @@ Long-tail keywords are winnable; head terms ("home decor") are owned by giants.
 Aim for 15–25 candidates like "small living room ideas", "cozy reading nook",
 "boho gallery wall". Best expansion order: **PinClicks Interest Explorer** → then
 **Pinterest guided search** (autocomplete + colored modifier bubbles) → then Trends
-related terms. Combine modifiers (audience, room, style, budget, season). Target
-**3+ word phrases** (4+ in brutal niches) to escape saturation.
+related terms → then the **alphabet-soup trick**: type the seed followed by each
+letter a–z ("fall porch decor a", "fall porch decor b", ...) in the Pinterest search
+bar and read what autocomplete returns — this surfaces real long-tail queries people
+are actively typing that Interest Explorer/Trends won't show you. Combine modifiers
+(audience, room, style, budget, season). Target **3+ word phrases** (4+ in brutal
+niches) to escape saturation.
+
+**Cluster, don't scatter — one article per intent, not per keyword.** Group the
+long-tail variants that share the same underlying intent (e.g. "cozy fall porch
+decor", "small front porch fall decor", "fall porch ideas on a budget") under ONE
+article/topic rather than writing a separate thin article per keyword. Save each
+variant's score individually via `save_keyword_score`, but note the cluster they
+belong to in `source_notes` (e.g. "cluster: fall front porch decor") and only
+`add_topic` once for the cluster's best title — then plan multiple *pin* angles
+(not multiple articles) against the different variants later.
 
 ### 2. Gather signals per candidate (navigate + read)
 **Pinterest Trends** (set Region first): demand (0–100 curve, screenshot to read),
@@ -212,19 +242,41 @@ brand-new account gets ~zero reach on a locked SERP no matter how big the volume
 competition must **multiply** the score down, and we must reward **click-intent**, not
 just search demand. Use this gated formula:
 
-`base = 0.25*demand + 0.20*ctr_intent + 0.20*seasonalTiming + 0.20*momentum + 0.15*fit`
-`score = round( 100 * base * (1 - competition)^1.5 )`
+`base = 0.20*demand + 0.25*ctr_intent + 0.20*seasonalTiming + 0.20*momentum + 0.15*fit`
+
+This blog is a **brand-new, unestablished Pinterest account** right now (no history,
+no domain trust yet), which changes how harshly competition should gate the score.
+Cross-AI review converged that a static `^1.5` is too forgiving for a new account —
+use this harsher, tiered gate instead (revisit/relax once the account has real
+traction — see the feedback-loop note at the end of this skill):
+```
+if competition >= 0.6:            score ≈ 0-10   (treat as rejected; note "locked — skip" in source_notes)
+elif competition >= 0.3:           score = round(100 * base * (1 - competition)^2.2)
+else:                              score = round(100 * base * (1 - competition)^1.5)
+```
+These exact thresholds/exponents are a reasoned estimate, not measured from our own
+data yet — once real pins have 30–90 days of performance, compare predicted scores to
+actual outbound clicks (via the `performance` table) and adjust.
 
 Each sub-signal is 0–1:
 - **demand** — PinClicks volume, **long-tail biased**: treat volume as *order of
   magnitude / a qualification filter*, not a literal count. Down-weight head terms even
-  if huge (they're where competition locks you out).
-- **ctr_intent** *(NEW — the signal we were missing)* — will searchers CLICK to the
-  blog, or just save the picture? Solution/list/how-to/problem phrasing ("small-space
-  X ideas", "DIY X", "X on a budget") = high (0.8–1.0). Pure aesthetic/mood terms
-  ("cozy fall aesthetic", "dream living room") = low (0.2–0.4): big saves, little
-  outbound traffic. Judge from the phrasing AND whether the Top-Pins SERP is
-  blog/outbound pins vs. idea-pins.
+  if huge (they're where competition locks you out). Weighted lower than ctr_intent —
+  for a new account, the "biggest" keyword matters less than one Pinterest will
+  actually let you win.
+- **ctr_intent** — will searchers CLICK to the blog, or does the Pin image alone
+  already answer them (saves, no visit)? Don't judge by phrasing alone — check the
+  **Top Pins SERP itself**:
+  - Do top pins link out to a real blog/article, or are they product-only /
+    image-only pins with nowhere to click? Outbound-linking top pins = good sign.
+  - Does the pin image show the FULL answer (a complete recipe card, a finished
+    tutorial, one static room photo) with nothing left to learn? That satisfies the
+    user inside Pinterest — lower ctr_intent even if saves are high.
+  - Phrasing still matters as a proxy: solution/list/how-to/problem/budget/checklist
+    wording ("small-space X ideas", "DIY X", "X on a budget", "X mistakes to avoid")
+    = high (0.8–1.0), because it promises more than one image can show — a genuine
+    curiosity gap. Pure aesthetic/mood terms ("cozy fall aesthetic", "dream living
+    room") = low (0.2–0.4): people save the picture and never click.
 - **seasonalTiming** — 1.0 if we're **60–90 days before the peak** right now (or
   ~25–30% up last year's curve), declining linearly to ~0 by <30 days out; 0.5 for
   true evergreen.
@@ -256,7 +308,9 @@ Don't default every topic to a numbered listicle. Read what the user actually as
   terms **written as plain language, not a keyword list**. Pinterest is a search
   engine — sentence-form keywords rank; keyword-stuffing gets suppressed.
 - **hashtags**: **default to NONE.** Practitioner + Pinterest-rep consensus in 2025–26
-  is that hashtags are dead-to-harmful on Pinterest (unlike Instagram). If you include
+  is that hashtags are dead-to-harmful on Pinterest (unlike Instagram) — Pinterest
+  deprioritized them since 2022, and one benchmark found only ~19% of viral pins used
+  any. If you include
   any, cap at **0–3** at the very end. Do not stuff. (This overrides older advice.)
 
 ### 5. Save
@@ -293,6 +347,17 @@ The platform changed; calibrate expectations and strategy accordingly.
 - **Aug 2024 update + Feb 2025 dip:** virality slowed. New/low-trust accounts sit in a
   **60–90 day "trust sandbox"** before traffic builds. Sustained engagement over months
   beats short spikes. Don't promise fast results.
+- **New-account topic strategy: narrower and deeper, not scattered.** For roughly the
+  first 60 days, favor a small number of tightly related clusters (e.g. small-space
+  living rooms, entryways, front porches — all "small home" adjacent) over jumping
+  between unrelated niches (decor one day, recipes the next, nurseries after that).
+  Pinterest needs a clean signal of what the account/domain is about before it trusts
+  it with competitive keywords. Bias toward the softest, most specific long-tails
+  during this window even more than usual.
+- **New-account timing nudge:** for this account specifically, err toward publishing
+  at the START of the lead window (nearer 90 days / the flat trough) rather than the
+  end (45 days / 25–30% up the curve) — an unestablished domain takes longer to get
+  indexed and trusted, so the extra runway compensates for slower initial pickup.
 - **Fresh pins drive >90% of outbound traffic** (new "Creates", not repins). "Fresh"
   also includes **updating titles/descriptions/boards on existing pins** — so refreshing
   metadata is a real lever, not just net-new pins.
@@ -308,6 +373,15 @@ The platform changed; calibrate expectations and strategy accordingly.
   expect possible GenAI labeling / feed suppression from users who opt out of AI. Favor
   light edits over heavy AI transformation on pins, and flag this if the user asks why a
   pin underperforms.
+
+## Feedback loop (once pins are live — not part of today's scan)
+This is a prediction system running on estimates; it should get more accurate over
+time. Once pins have been live 30–90 days, real numbers land in the `performance`
+table (impressions, saves, clicks per pin/keyword). When asked to review past
+predictions, compare `opportunity_score`/`ctr_intent` against actual outbound clicks
+and flag any systematic miss (e.g. "aesthetic-phrased keywords are underperforming
+their ctr_intent estimate — lower that weighting") rather than silently repeating the
+same bias forever.
 
 ## Report back
 Give the user a short ranked table (keyword — score — peak/publish-by — why) and say
