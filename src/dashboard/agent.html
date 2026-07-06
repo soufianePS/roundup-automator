@@ -45,33 +45,48 @@
 <script>
 const $ = id => document.getElementById(id);
 const chat = $('chat');
-let sessionId = null, es = null, running = false;
+let sessionId = localStorage.getItem('activeSessionId') || null;
+let es = null, running = false;
 const esc = s => (s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 
+// One agent runs at a time across the WHOLE app (Overview's Trend Radar box and
+// this chat share the same underlying run). 'activeRunId' in localStorage is the
+// cross-page marker: whichever page you're on, load re-subscribes to it.
 function addMsg(kind, who){ const d=document.createElement('div'); d.className='msg '+kind; d.innerHTML=`<div class="who">${who}</div><div class="body"></div>`; chat.appendChild(d); chat.scrollTop=chat.scrollHeight; return d.querySelector('.body'); }
 function addTool(name, info){ const d=document.createElement('div'); d.className='msg tool'; d.innerHTML=`<span class="tdot">⚙</span> <b>${esc(name)}</b>${info?` · <span class="tinfo">${esc(info)}</span>`:''}`; chat.appendChild(d); chat.scrollTop=chat.scrollHeight; }
 function setRunning(on){ running=on; $('sendBtn').classList.toggle('hidden',on); $('stopBtn').classList.toggle('hidden',!on); }
+
+function subscribe(runId, agentBody){
+  $('sessBadge').className='status busy'; $('sessBadge').textContent='working…';
+  setRunning(true);
+  if(es) es.close();
+  es = new EventSource('/api/agent/stream/'+runId);
+  es.addEventListener('session', e=>{ sessionId = JSON.parse(e.data).id; localStorage.setItem('activeSessionId', sessionId); $('sessBadge').className='status ok'; $('sessBadge').textContent='session active'; });
+  es.addEventListener('text', e=>{ agentBody.textContent += JSON.parse(e.data).text; chat.scrollTop=chat.scrollHeight; });
+  es.addEventListener('tool', e=>{ const t=JSON.parse(e.data); addTool(t.name, t.info); });
+  es.addEventListener('done', ()=>{ es.close(); setRunning(false); localStorage.removeItem('activeRunId');
+    $('sessBadge').className='status ok'; $('sessBadge').textContent='session active'; if(!agentBody.textContent) agentBody.textContent='(done)'; });
+  es.addEventListener('error', e=>{ let m=''; try{m=JSON.parse(e.data).error}catch{}
+    if(m==='run not found'){ es.close(); setRunning(false); localStorage.removeItem('activeRunId');
+      $('sessBadge').className='status idle'; $('sessBadge').textContent='idle';
+      agentBody.textContent += (agentBody.textContent?'\n':'')+'⚠ this run already finished — its live log is no longer available.'; return; }
+    if(m){ agentBody.textContent += (agentBody.textContent?'\n':'')+'⚠ '+m; }
+    es.close(); setRunning(false); localStorage.removeItem('activeRunId'); $('sessBadge').className='status err'; $('sessBadge').textContent='error'; });
+}
 
 async function send(){
   const text = $('input').value.trim(); if(!text || running) return;
   $('input').value=''; autoize();
   addMsg('user','You').textContent = text;
   const agentBody = addMsg('agent','Agent');
-  setRunning(true);
   $('sessBadge').className='status busy'; $('sessBadge').textContent='working…';
 
   const r = await fetch('/api/agent/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:text, sessionId})}).then(r=>r.json()).catch(e=>({error:e.message}));
-  if(r.error){ agentBody.textContent='Error: '+r.error; setRunning(false); $('sessBadge').className='status err'; $('sessBadge').textContent='error'; return; }
-  const runId = r.runId;
-
-  es = new EventSource('/api/agent/stream/'+runId);
-  es.addEventListener('session', e=>{ sessionId = JSON.parse(e.data).id; $('sessBadge').className='status ok'; $('sessBadge').textContent='session active'; });
-  es.addEventListener('text', e=>{ agentBody.textContent += JSON.parse(e.data).text; chat.scrollTop=chat.scrollHeight; });
-  es.addEventListener('tool', e=>{ const t=JSON.parse(e.data); addTool(t.name, t.info); });
-  es.addEventListener('done', ()=>{ es.close(); setRunning(false); $('sessBadge').className='status ok'; $('sessBadge').textContent='session active'; if(!agentBody.textContent) agentBody.textContent='(done)'; });
-  es.addEventListener('error', e=>{ let m=''; try{m=JSON.parse(e.data).error}catch{} if(m){ agentBody.textContent += (agentBody.textContent?'\n':'')+'⚠ '+m; } es.close(); setRunning(false); $('sessBadge').className='status err'; $('sessBadge').textContent='error'; });
+  if(r.error){ agentBody.textContent='Error: '+r.error; $('sessBadge').className='status err'; $('sessBadge').textContent='error'; return; }
+  localStorage.setItem('activeRunId', r.runId);
+  subscribe(r.runId, agentBody);
 }
-async function stop(){ if(es) es.close(); await fetch('/api/agent/stop',{method:'POST'}).catch(()=>{}); setRunning(false); $('sessBadge').className='status idle'; $('sessBadge').textContent='stopped'; }
+async function stop(){ if(es) es.close(); await fetch('/api/agent/stop',{method:'POST'}).catch(()=>{}); setRunning(false); localStorage.removeItem('activeRunId'); $('sessBadge').className='status idle'; $('sessBadge').textContent='stopped'; }
 
 function autoize(){ const t=$('input'); t.style.height='auto'; t.style.height=Math.min(t.scrollHeight,160)+'px'; }
 $('input').addEventListener('input', autoize);
@@ -79,4 +94,13 @@ $('input').addEventListener('keydown', e=>{ if(e.key==='Enter' && !e.shiftKey){ 
 $('sendBtn').onclick = send;
 $('stopBtn').onclick = stop;
 document.querySelectorAll('.chip-btn').forEach(b=> b.onclick=()=>{ $('input').value=b.dataset.q; autoize(); $('input').focus(); });
+
+// Reconnect if a run is active — whether it was started here or from Overview's
+// Trend Radar box. The server replays buffered events so nothing is lost.
+const _activeRun = localStorage.getItem('activeRunId');
+if(_activeRun){
+  const agentBody = addMsg('agent','Agent');
+  agentBody.textContent = '↻ reconnecting to the running agent…\n';
+  subscribe(_activeRun, agentBody);
+}
 </script>

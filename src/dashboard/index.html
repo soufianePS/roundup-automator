@@ -239,7 +239,7 @@ function subscribe(runId, reconnect){
   setRunning(true);
   if(es) es.close();
   es = new EventSource('/api/agent/stream/'+runId);
-  es.addEventListener('session', ()=>{ $('sessBadge').className='status ok'; $('sessBadge').textContent='session active'; });
+  es.addEventListener('session', e=>{ localStorage.setItem('activeSessionId', JSON.parse(e.data).id); $('sessBadge').className='status ok'; $('sessBadge').textContent='session active'; });
   es.addEventListener('text', e=>{ say(stream).textContent += JSON.parse(e.data).text; stream.scrollTop=stream.scrollHeight; });
   es.addEventListener('tool', e=>{ const t=JSON.parse(e.data); toolChip(stream, t.name, t.info); });
   es.addEventListener('done', ()=>{ es.close(); setRunning(false);
