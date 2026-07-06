@@ -285,13 +285,14 @@ async function copyText(str, label){
 function copyField(id, what){
   const k=cardMap[id]; if(!k) return;
   const title=k.title_suggestion||k.keyword;
-  const tags=(k.annotations||'').split(',').map(s=>s.trim()).filter(Boolean).join(', ');
+  const tagsArr=(k.annotations||'').split(',').map(s=>s.trim()).filter(Boolean);
+  const tagsLines=tagsArr.join('\n');   // one tag per line
   if(what==='title') return copyText(title,'Title');
-  if(what==='tags') return copyText(tags,'Tags');
+  if(what==='tags') return copyText(tagsLines,'Tags');
   // all
   const parts=[title, '', 'Keyword: '+k.keyword];
   if(k.pin_description) parts.push('', k.pin_description);
-  if(tags) parts.push('', 'Tags: '+tags);
+  if(tagsArr.length) parts.push('', 'Tags:', tagsLines);
   if(k.hashtags) parts.push('', k.hashtags);
   copyText(parts.join('\n'),'Everything');
 }
