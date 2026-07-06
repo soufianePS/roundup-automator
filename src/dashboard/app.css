@@ -215,6 +215,28 @@ select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--
 .rc-kw{font-family:var(--mono);font-size:11px;color:var(--faint);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rc-badges{display:flex;flex-wrap:wrap;gap:7px;align-items:center}
 .rc-badges .chip.vd{font-weight:700;letter-spacing:.04em}
+
+/* scan option dropdowns */
+.scan-opts{display:flex;flex-wrap:wrap;gap:14px;margin-bottom:12px}
+.scan-opts label{display:flex;flex-direction:column;gap:4px;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
+.scan-opts select{min-width:130px;font-family:var(--sans);font-size:13px;padding:7px 10px;border:1px solid var(--hairline);border-radius:9px;background:var(--surface);color:var(--ink);text-transform:none;letter-spacing:0}
+.scan-opts select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+
+/* per-card actions (like + dismiss) */
+.rc{position:relative}
+.rc-actions{position:absolute;top:10px;right:10px;display:flex;gap:4px;opacity:0;transition:opacity .2s var(--ease);z-index:2}
+.rc:hover .rc-actions,.rc-actions:focus-within{opacity:1}
+.ic-btn{width:26px;height:26px;border-radius:50%;border:1px solid var(--hairline);background:var(--surface);cursor:pointer;font-size:13px;line-height:1;display:grid;place-items:center;color:var(--muted);box-shadow:var(--sh-sm)}
+.ic-btn:hover{background:var(--shell)}
+.ic-btn.like.on{color:var(--accent);border-color:var(--accent-line);background:var(--accent-soft);opacity:1}
+.rc:has(.like.on) .rc-actions{opacity:1}
+.ic-btn.dismiss:hover{color:var(--high);border-color:var(--high)}
+
+/* "start working" timing line */
+.rc-start{font-family:var(--mono);font-size:11.5px;font-weight:600;letter-spacing:.01em;display:flex;align-items:center;gap:6px}
+.rc-start.nowcls{color:var(--high)}.rc-start.soon{color:var(--accent-press)}.rc-start.later{color:var(--muted);font-weight:500}
+
+.chip-btn.on{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
 .rc-why{font-size:12px;color:var(--muted);line-height:1.5;flex:1}
 .rc-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:2px;padding-top:12px;border-top:1px solid var(--hairline-2)}
 .rc-peak{font-family:var(--mono);font-size:11px;color:var(--muted)}

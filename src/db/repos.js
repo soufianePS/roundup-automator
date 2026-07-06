@@ -69,7 +69,35 @@ export const Topics = {
 };
 
 export const KeywordScores = {
+  // Has this keyword already been surfaced (any state incl. dismissed)? For dedup.
+  find(keyword) {
+    return db().prepare('SELECT * FROM keyword_scores WHERE keyword=? COLLATE NOCASE ORDER BY id DESC LIMIT 1').get(String(keyword || '').trim());
+  },
+  recentKeywords(limit = 300) {
+    return db().prepare('SELECT keyword FROM keyword_scores ORDER BY id DESC LIMIT ?').all(limit).map(r => r.keyword);
+  },
+  setLiked(id, liked) { db().prepare('UPDATE keyword_scores SET liked=? WHERE id=?').run(liked ? 1 : 0, id); },
+  likedList(limit = 100) { return db().prepare('SELECT * FROM keyword_scores WHERE liked=1 AND dismissed=0 ORDER BY opportunity_score DESC LIMIT ?').all(limit); },
   save(k) {
+    // Dedup: if this keyword was scored before, UPDATE that row instead of adding a
+    // duplicate — so the same trend never clutters the radar twice.
+    const existing = this.find(k.keyword);
+    if (existing) {
+      db().prepare(`UPDATE keyword_scores SET opportunity_score=?, demand=?, ctr_intent=?, momentum=?,
+        competition=?, seasonal_timing=?, fit=?, title_suggestion=?, pin_description=?, hashtags=?,
+        peak_month=?, publish_by=?, annotations=?, top_pin_saves=?, search_volume=?, trend_points=?,
+        source_notes=?, dismissed=0, researched_at=datetime('now') WHERE id=?`).run(
+        k.opportunity_score ?? null, k.demand ?? null, k.ctr_intent ?? null, k.momentum ?? null,
+        k.competition ?? null, k.seasonal_timing ?? null, k.fit ?? null,
+        k.title_suggestion ?? null, k.pin_description ?? null,
+        Array.isArray(k.hashtags) ? k.hashtags.join(' ') : (k.hashtags ?? null),
+        k.peak_month ?? null, k.publish_by ?? null,
+        Array.isArray(k.annotations) ? k.annotations.join(', ') : (k.annotations ?? null),
+        k.top_pin_saves ?? null, k.search_volume ?? null,
+        Array.isArray(k.trend_points) ? JSON.stringify(k.trend_points) : (k.trend_points ?? null),
+        k.source_notes ?? null, existing.id);
+      return existing.id;
+    }
     return db().prepare(`INSERT INTO keyword_scores
       (keyword, opportunity_score, demand, ctr_intent, momentum, competition, seasonal_timing, fit,
        title_suggestion, pin_description, hashtags, peak_month, publish_by,
@@ -87,13 +115,15 @@ export const KeywordScores = {
     ).lastInsertRowid;
   },
   top(limit = 25) {
-    return db().prepare('SELECT * FROM keyword_scores ORDER BY opportunity_score DESC LIMIT ?').all(limit);
+    return db().prepare('SELECT * FROM keyword_scores WHERE dismissed=0 ORDER BY opportunity_score DESC LIMIT ?').all(limit);
   },
   // The most recently researched batch (newest first), then callers sort by score.
   // "Show me the 15 topics to work on now" = the agent's latest research run.
   latest(limit = 15) {
-    return db().prepare('SELECT * FROM keyword_scores ORDER BY id DESC LIMIT ?').all(limit);
+    return db().prepare('SELECT * FROM keyword_scores WHERE dismissed=0 ORDER BY id DESC LIMIT ?').all(limit);
   },
+  // Soft-delete: hides from the radar but keeps the record so dedup won't re-surface it.
+  remove(id) { db().prepare('UPDATE keyword_scores SET dismissed=1 WHERE id=?').run(id); },
 };
 
 export const KeywordBank = {

@@ -28,12 +28,39 @@
 
     <!-- Radar: prompt + live agent activity -->
     <div class="card radar" id="radar" style="scroll-margin-top:20px"><div class="core">
+      <div class="scan-opts">
+        <label>How many<select id="optCount"><option>2</option><option>3</option><option selected>5</option><option>8</option><option>10</option><option>15</option></select></label>
+        <label>Publish<select id="optWhen">
+          <option value="as soon as possible (publish this week)">This week</option>
+          <option value="next week">Next week</option>
+          <option value="in about 2 weeks" selected>In 2 weeks</option>
+          <option value="this month">This month</option>
+          <option value="next 1-3 months (plan ahead)">Next 1–3 months</option>
+        </select></label>
+        <label>Category<select id="optCat">
+          <option value="">Any</option>
+          <option value="food and drinks">Food &amp; Drinks</option>
+          <option value="home decor">Home Decor</option>
+          <option value="diy and crafts">DIY &amp; Crafts</option>
+          <option value="gardening">Gardening</option>
+          <option value="parenting">Parenting</option>
+          <option value="event planning">Holidays &amp; Events</option>
+          <option value="health">Health</option>
+          <option value="beauty">Beauty</option>
+          <option value="travel">Travel</option>
+        </select></label>
+        <label>Format<select id="optFmt">
+          <option value="either roundup or single, whichever the SERP wants">Either</option>
+          <option value="single-topic posts only (NOT roundups)">Single post</option>
+          <option value="roundup listicles only">Roundup</option>
+        </select></label>
+      </div>
       <div class="ask">
-        <textarea id="ask" rows="1" placeholder="Tell the agent what you want — e.g. “give me 3 fall porch decor articles to work on” or “10 low-competition Halloween topics”.  (Enter to run)"></textarea>
+        <textarea id="ask" rows="1" placeholder="Optional extra detail — e.g. “focus on cozy fall baking”. The dropdowns above already set the basics.  (Enter to run)"></textarea>
         <button class="btn primary" id="runBtn">Find topics <span class="cap">→</span></button>
         <button class="btn danger hidden" id="stopBtn">Stop</button>
       </div>
-      <p class="prompthint">Say <b>how many</b> and <b>on what</b>. The agent reads <b>Pinterest Trends</b> + <b>PinClicks</b> (incl. Top Pins for competition), scores each idea's <b>viral potential</b>, and works out when to publish. Runs on your Claude subscription — no paid API.</p>
+      <p class="prompthint">Set <b>how many · when to publish · category · format</b>, then Find. The agent reads <b>Pinterest Trends</b> + <b>PinClicks</b> (Top Pins for competition), skips trends you've already seen, and returns only the ones truly worth it — so you may get fewer than asked. Runs on your Claude subscription — no paid API.</p>
 
       <div class="activity hidden" id="activity">
         <div class="ah"><b>Agent activity</b><span class="status busy" id="actStatus">working…</span></div>
@@ -49,8 +76,11 @@
     </section>
 
     <div class="card-h" style="padding:0 2px 12px;border:0">
-      <h2 style="font-size:15px;margin:0">Topics to work on now</h2>
-      <span class="hint" id="gridHint">ranked by viral potential</span>
+      <h2 style="font-size:15px;margin:0" id="gridTitle">Topics to work on now</h2>
+      <div style="display:flex;gap:8px;align-items:center">
+        <span class="hint" id="gridHint">ranked by viral potential</span>
+        <button class="chip-btn" id="likedToggle" aria-pressed="false">♡ Liked</button>
+      </div>
     </div>
     <div class="radar-grid" id="grid"></div>
     <div class="empty card hidden" id="emptyState"><div class="core" style="padding:38px;text-align:center;color:var(--faint)">
@@ -75,16 +105,22 @@ const norm01 = v => v==null ? null : (v>1 ? v/100 : v);   // sub-signals are 0�
 let es=null, running=false;
 
 function buildPrompt(userText){
-  const ask = (userText && userText.trim())
-    ? userText.trim()
-    : 'Find the best family/home blog topics I should work on right now to get Pinterest traffic (pick a sensible number, around 10-15).';
-  return `${ask}
+  const count = $('optCount').value;
+  const when = $('optWhen').value;
+  const cat = $('optCat').value;
+  const fmt = $('optFmt').value;
+  const extra = (userText && userText.trim()) ? `Extra detail: ${userText.trim()}.` : '';
+  return `Find me up to ${count} of the BEST ${cat ? cat + ' ' : ''}topics to work on. I plan to publish ${when}. Format: ${fmt}. ${extra}
 
-Do EXACTLY what I asked above — honor the number of topics and the subject I named. Use your keyword-research skill.
+Use your keyword-research skill and the FAST bank-first pipeline (harvest_trends → keyword bank → pinclicks_enrich withTopPins on the shortlist).
 
-Open Pinterest Trends and PinClicks in your browser and actually read them before deciding: check the Growing/Seasonal leaderboards, the 2-year interest graphs, related terms, region = United States; in PinClicks open Top Pins sorted by saves to judge competition. Ground every pick in what the graphs/SERP show for today's date.
+CRITICAL rules:
+1. DEDUP — call recent_keywords first and DO NOT re-suggest any trend already surfaced before. I don't want to see the same topics again.
+2. WORTH-IT ONLY — return only topics genuinely worth working on (WINNABLE / decent volume for a new blog). If fewer than ${count} are truly worth it, return FEWER and tell me which you dropped and why. Never pad with weak picks.
+3. TIMING — I'm publishing ${when}, so pick trends whose publish window fits that, and set publish_by to the concrete date I should START working on each.
+4. Honor the Format above (single-topic vs roundup) using the SERP, not just phrasing.
 
-Save each topic with save_keyword_score including: opportunity_score (honest 0-100, gated by competition), ctr_intent, competition, momentum, seasonal_timing, peak_month, publish_by, title_suggestion, pin_description, annotations (PinClicks tags), top_pin_saves, search_volume, and trend_points. When finished, give me a short ranked summary of what you saved.`;
+Save each kept topic with save_keyword_score (opportunity_score 0-100, ctr_intent, competition, momentum, seasonal_timing, peak_month, publish_by, title_suggestion, pin_description, annotations, top_pin_saves, search_volume, trend_points). End with a ranked table + note anything you dropped as not worth it.`;
 }
 
 // month name for the eyebrow
@@ -144,13 +180,28 @@ function detail(k){
   </div></details>`;
 }
 
+// Urgency of the "start working" window, inferred from publish_by text + current month.
+function startInfo(k){
+  const pb = (k.publish_by||'').toLowerCase();
+  const month = new Date().toLocaleString('en-US',{month:'long'}).toLowerCase();
+  let cls='soon', ic='🗓';
+  if(!pb) return null;
+  if(/now|immediately|today|this week|asap/.test(pb)) { cls='nowcls'; ic='▶'; }
+  else if(pb.includes(month)) { cls='soon'; ic='▶'; }
+  else cls='later';
+  return { cls, ic, txt:'Start '+esc(k.publish_by) };
+}
 function card(k){
   const s = score100(k.opportunity_score);
   const title = k.title_suggestion || k.keyword;
-  const when = k.publish_by ? `Publish by ${esc(k.publish_by)}` : '';
   const peak = k.peak_month ? `peaks ${esc(k.peak_month)}` : '';
-  return `<article class="rc">
+  const st = startInfo(k);
+  return `<article class="rc" data-id="${k.id}">
     <div class="in">
+      <div class="rc-actions">
+        <button class="ic-btn like ${k.liked?'on':''}" data-like="${k.id}" title="Like — save to your Liked view">${k.liked?'♥':'♡'}</button>
+        <button class="ic-btn dismiss" data-dismiss="${k.id}" title="Remove this topic">✕</button>
+      </div>
       <div class="rc-top">
         <div class="gauge" style="--p:${s};--gc:${scoreColor(s)}"><span>${s}<i>%</i></span></div>
         <div class="rc-head">
@@ -159,10 +210,11 @@ function card(k){
           <div class="rc-kw">${esc(k.keyword)}</div>
         </div>
       </div>
-      <div class="rc-badges">${verdictBadge(k.competition)}${ctrBadge(k.ctr_intent)}${momBadge(k.momentum)}${when?`<span class="win">${when}</span>`:''}</div>
+      <div class="rc-badges">${verdictBadge(k.competition)}${ctrBadge(k.ctr_intent)}${momBadge(k.momentum)}</div>
+      ${st?`<div class="rc-start ${st.cls}">${st.ic} ${st.txt}${peak?` · ${peak}`:''}</div>`:(peak?`<div class="rc-start later">🗓 ${peak}</div>`:'')}
       ${k.source_notes?`<div class="rc-why">${esc(k.source_notes)}</div>`:'<div class="rc-why"></div>'}
       <div class="rc-foot">
-        <span class="rc-peak">${peak}</span>
+        <span class="rc-peak">${k.search_volume?fmt(k.search_volume)+' vol':''}</span>
         <button class="btn sm" data-kw="${esc(k.keyword)}" data-title="${esc(title)}">Queue <span aria-hidden="true">→</span></button>
       </div>
       ${detail(k)}
@@ -174,7 +226,19 @@ async function currentMaxId(){
   try{ const r = await fetch('/api/keywords/latest?limit=1').then(r=>r.json()); return (Array.isArray(r)&&r[0]) ? r[0].id : 0; }catch{ return 0; }
 }
 
+let likedView = false;
+
 async function loadRadar(){
+  const grid=$('grid');
+  if(likedView){
+    let rows=[]; try{ rows = await fetch('/api/keywords/liked').then(r=>r.json()); }catch{}
+    if(!Array.isArray(rows)) rows=[];
+    $('gridTitle').textContent='♥ Liked topics';
+    if(!rows.length){ grid.innerHTML=''; $('emptyState').classList.remove('hidden'); $('emptyState').querySelector('.core').innerHTML='No liked topics yet. Tap ♡ on any card to save it here.'; $('kpis').hidden=true; $('gridHint').textContent=''; renderGrid(rows); return; }
+    $('emptyState').classList.add('hidden');
+    renderGrid(rows); $('gridHint').textContent=`${rows.length} liked`; return;
+  }
+  $('gridTitle').textContent='Topics to work on now';
   let rows=[]; try{ rows = await fetch('/api/keywords/latest?limit=50').then(r=>r.json()); }catch{}
   if(!Array.isArray(rows)) rows=[];
   // Show only the LAST run's results (rows created after the baseline id we saved
@@ -183,12 +247,9 @@ async function loadRadar(){
   let shown = afterId ? rows.filter(r => r.id > afterId) : rows.slice(0,15);
   if(afterId && !shown.length) shown = rows.slice(0,15);
   rows = shown;
-  rows.sort((a,b)=>score100(b.opportunity_score)-score100(a.opportunity_score));
-  const grid=$('grid');
   if(!rows.length){ grid.innerHTML=''; $('emptyState').classList.remove('hidden'); $('kpis').hidden=true; $('gridHint').textContent=''; return; }
   $('emptyState').classList.add('hidden');
-  grid.innerHTML = rows.map(card).join('');
-  grid.querySelectorAll('button[data-kw]').forEach(b=> b.onclick=()=>queueTopic(b));
+  renderGrid(rows);
   // KPIs
   const scores = rows.map(r=>score100(r.opportunity_score));
   const avg = Math.round(scores.reduce((a,c)=>a+c,0)/scores.length);
@@ -197,6 +258,28 @@ async function loadRadar(){
   $('kTop').textContent=score100(rows[0].opportunity_score); $('kTopKw').textContent=rows[0].keyword;
   $('gridHint').textContent=`${rows.length} topics · ranked by viral potential`;
   $('kpis').hidden=false;
+}
+
+function renderGrid(rows){
+  const grid=$('grid');
+  rows.sort((a,b)=>score100(b.opportunity_score)-score100(a.opportunity_score));
+  grid.innerHTML = rows.map(card).join('');
+  grid.querySelectorAll('button[data-kw]').forEach(b=> b.onclick=()=>queueTopic(b));
+  grid.querySelectorAll('[data-dismiss]').forEach(b=> b.onclick=()=>dismissTopic(b.dataset.dismiss));
+  grid.querySelectorAll('[data-like]').forEach(b=> b.onclick=()=>toggleLike(b));
+}
+
+async function dismissTopic(id){
+  const card=document.querySelector(`.rc[data-id="${id}"]`);
+  await fetch('/api/keywords/'+id,{method:'DELETE'}).catch(()=>{});
+  if(card) card.remove(); toast('Removed');
+}
+async function toggleLike(btn){
+  const id=btn.dataset.like; const on=!btn.classList.contains('on');
+  await fetch('/api/keywords/'+id+'/like',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({liked:on})}).catch(()=>{});
+  btn.classList.toggle('on',on); btn.textContent=on?'♥':'♡';
+  if(likedView && !on){ const c=document.querySelector(`.rc[data-id="${id}"]`); if(c) c.remove(); }
+  toast(on?'Liked':'Unliked');
 }
 
 async function loadQueue(){
@@ -283,6 +366,7 @@ async function stop(){ if(es) es.close(); await fetch('/api/agent/stop',{method:
 $('runBtn').onclick=run; $('stopBtn').onclick=stop;
 $('ask').addEventListener('input',()=>{ const t=$('ask'); t.style.height='auto'; t.style.height=Math.min(t.scrollHeight,140)+'px'; });
 $('ask').addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); run(); } });
+$('likedToggle').onclick=()=>{ likedView=!likedView; const b=$('likedToggle'); b.setAttribute('aria-pressed',likedView); b.textContent=(likedView?'♥':'♡')+' Liked'; b.classList.toggle('on',likedView); loadRadar(); };
 
 loadRadar(); loadQueue();
 // If a run was in progress when the page was closed/refreshed, reconnect to it.

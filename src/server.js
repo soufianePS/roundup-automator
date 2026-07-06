@@ -217,6 +217,12 @@ app.post('/api/topics', (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.get('/api/keywords', (req, res) => { try { res.json(KeywordScores.top(50)); } catch (e) { res.status(500).json({ error: e.message }); } });
+// Dismiss a topic from the Trend Radar (soft-delete — kept for dedup).
+app.delete('/api/keywords/:id', (req, res) => { try { KeywordScores.remove(Number(req.params.id)); res.json({ ok: true }); } catch (e) { res.status(500).json({ error: e.message }); } });
+// Like / unlike a topic.
+app.post('/api/keywords/:id/like', (req, res) => { try { KeywordScores.setLiked(Number(req.params.id), !!(req.body || {}).liked); res.json({ ok: true }); } catch (e) { res.status(500).json({ error: e.message }); } });
+// Liked topics (the ♥ view).
+app.get('/api/keywords/liked', (req, res) => { try { res.json(KeywordScores.likedList(100)); } catch (e) { res.status(500).json({ error: e.message }); } });
 // The latest research batch — powers the Trend Radar cards ("15 to work on now").
 app.get('/api/keywords/latest', (req, res) => {
   try { res.json(KeywordScores.latest(Math.min(Number(req.query.limit) || 15, 50))); }

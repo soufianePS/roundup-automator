@@ -464,7 +464,20 @@ and flag any systematic miss (e.g. "aesthetic-phrased keywords are underperformi
 their ctr_intent estimate — lower that weighting") rather than silently repeating the
 same bias forever.
 
+## Don't repeat topics + don't pad (cross-checked with the dashboard)
+- **DEDUP:** call `recent_keywords` before saving and SKIP any candidate already there
+  (it's already been surfaced/worked). The user does not want the same trend twice.
+  `save_keyword_score` also upserts by keyword, but skip proactively so you spend the
+  scan on NEW opportunities. Only re-check an existing keyword if the user explicitly asks.
+- **WORTH-IT ONLY, never pad:** if the user asks for N but only M are genuinely worth it
+  (WINNABLE / real volume for a new blog), save M and clearly say which you dropped and
+  why ("3 requested; 2 worth it — dropped 'X': locked SERP, 8k-save fresh incumbent").
+  A weak pick padded to hit a number wastes the user's work.
+- **publish_by = the START date**, phrased concretely and actionably ("start now", "start
+  by mid-August") — the dashboard shows it as the "Start working" cue, so make it a real
+  go-signal, not just the peak month.
+
 ## Report back
-Give the user a short ranked table (keyword — score — peak/publish-by — why) and say
-how many you saved. Lead with the timing verdict for anything seasonal. Don't dump raw
-page text.
+Give the user a short ranked table (keyword — score — verdict — start-by — why), say how
+many you saved, and list anything you deliberately dropped as not worth it. Lead with the
+timing verdict for anything seasonal. Don't dump raw page text.

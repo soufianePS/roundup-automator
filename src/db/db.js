@@ -39,6 +39,8 @@ function _migrate(db) {
   add('keyword_scores', 'top_pin_saves', 'INTEGER');
   add('keyword_scores', 'search_volume', 'INTEGER');
   add('keyword_scores', 'trend_points', 'TEXT');
+  add('keyword_scores', 'liked', 'INTEGER DEFAULT 0');
+  add('keyword_scores', 'dismissed', 'INTEGER DEFAULT 0');
 }
 
 export function tables() {

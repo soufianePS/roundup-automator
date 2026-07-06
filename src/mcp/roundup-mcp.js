@@ -96,6 +96,11 @@ server.tool('list_keyword_scores', 'Top researched keywords by opportunity score
   { limit: z.number().int().optional() },
   wrap(({ limit }) => KeywordScores.top(limit ?? 25)));
 
+server.tool('recent_keywords',
+  'List keywords already surfaced before (incl. dismissed) so you DON\'T re-suggest the same trend twice. Call this BEFORE saving — skip any candidate already here unless the user asked to re-check.',
+  { limit: z.number().int().optional() },
+  wrap(({ limit }) => KeywordScores.recentKeywords(limit ?? 300)));
+
 // ─────────────────────────── Articles / items / pins (data) ───────────────────────────
 server.tool('create_article', 'Create an article row (roundup) in the DB.',
   { title: z.string(), slug: z.string().optional(), topic_id: z.number().int().optional(), hero_path: z.string().optional(), status: z.string().optional() },
