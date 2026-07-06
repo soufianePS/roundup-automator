@@ -226,8 +226,19 @@ Output an **opportunity score**, NOT a virality promise. Be honest.
 ### 5. Save
 Call `save_keyword_score` once per keyword with:
 `{keyword, opportunity_score, demand, ctr_intent, momentum, competition, seasonal_timing,
-fit, title_suggestion, pin_description, hashtags, peak_month, publish_by, source_notes}`.
+fit, title_suggestion, pin_description, hashtags, peak_month, publish_by,
+annotations, top_pin_saves, search_volume, trend_points, source_notes}`.
 - `ctr_intent` (0–1): how likely searchers CLICK through vs. just save (see rubric).
+- **`annotations`** (array of strings): the PinClicks interest annotations on the winning
+  top pins — the exact tags Pinterest assigned. These are gold for the pin title/desc; grab
+  them from the top pins / Pin Stats. (The dashboard shows them as chips to reuse.)
+- **`top_pin_saves`** (number): the median save count of the top ~10 pins for this keyword
+  (the REAL competition benchmark you already read to set `competition`). This is what a
+  winner in this SERP actually earns — record it.
+- **`search_volume`** (number): the raw PinClicks volume figure (order-of-magnitude).
+- **`trend_points`** (array of ~12 numbers, 0–100): the last-12-months relative-interest
+  values off the Pinterest Trends curve, so the dashboard can draw a sparkline. Read them
+  off the graph as best you can (approximate is fine); omit if you truly can't.
 - `opportunity_score` is what the dashboard shows as the **viral-potential %** — make it
   honest (0–100 from the rubric).
 - `peak_month`: the month demand peaks (e.g. "November"), or "year-round" for evergreen.

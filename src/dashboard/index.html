@@ -96,6 +96,41 @@ function ctrBadge(v){ v=norm01(v); if(v==null) return '';
   const [cls,txt] = v>=0.6 ? ['good','↗ high clicks'] : v>=0.4 ? ['warn','~ some clicks'] : ['high','◡ saves only'];
   return `<span class="chip ${cls}"><span class="d"></span>${txt}</span>`; }
 
+const pct = v => { v=norm01(v); return v==null ? '—' : Math.round(v*100)+'%'; };
+const fmt = n => (n==null||n==='') ? '—' : Number(n).toLocaleString();
+
+function sparkline(raw){
+  let p; try{ p = typeof raw==='string'?JSON.parse(raw):raw; }catch{ return ''; }
+  if(!Array.isArray(p) || p.length<2) return '';
+  const w=132,h=34, max=Math.max(...p,1), min=Math.min(...p,0), rng=(max-min)||1, step=w/(p.length-1);
+  const pts = p.map((v,i)=>`${(i*step).toFixed(1)},${(h-((v-min)/rng)*(h-4)-2).toFixed(1)}`).join(' ');
+  const lx=w, ly=h-((p[p.length-1]-min)/rng)*(h-4)-2;
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" preserveAspectRatio="none">`
+    + `<polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`
+    + `<circle cx="${lx.toFixed(1)}" cy="${ly.toFixed(1)}" r="2.6" fill="var(--accent)"/></svg>`;
+}
+
+function detail(k){
+  const spark = sparkline(k.trend_points);
+  const d=norm01(k.demand), c=norm01(k.competition), ct=norm01(k.ctr_intent);
+  const reach = (d!=null&&c!=null) ? d*(1-c)*(ct==null?1:ct) : null;
+  const reachTxt = reach==null?'—':(reach>=0.4?'High':reach>=0.2?'Medium':'Low');
+  const annos = (k.annotations||'').split(/[,]/).map(s=>s.trim()).filter(Boolean);
+  return `<details class="rc-more"><summary>More data</summary><div class="rc-detail">
+    ${spark?`<div class="dl"><span>12-mo interest · relative</span><span>${spark}</span></div>`:''}
+    <div class="mgrid">
+      <div><span>Search volume</span><b>${fmt(k.search_volume)}</b><i>PinClicks · est.</i></div>
+      <div><span>Top-pin saves</span><b>${fmt(k.top_pin_saves)}</b><i>winners here</i></div>
+      <div><span>Click intent</span><b>${pct(k.ctr_intent)}</b><i>est.</i></div>
+      <div><span>Competition</span><b>${pct(k.competition)}</b><i>lower = better</i></div>
+      <div><span>Momentum</span><b>${pct(k.momentum)}</b><i>rising</i></div>
+      <div><span>Reach outlook</span><b>${reachTxt}</b><i>est.</i></div>
+    </div>
+    ${annos.length?`<div class="annos"><span class="annl">Pinterest tags to reuse</span>${annos.map(a=>`<span class="atag">${esc(a)}</span>`).join('')}</div>`:''}
+    <div class="afternote">Actual impressions · saves · clicks fill in here after the pin is live.</div>
+  </div></details>`;
+}
+
 function card(k){
   const s = Math.max(0, Math.min(100, Math.round(k.opportunity_score ?? 0)));
   const title = k.title_suggestion || k.keyword;
@@ -117,6 +152,7 @@ function card(k){
         <span class="rc-peak">${peak}</span>
         <button class="btn sm" data-kw="${esc(k.keyword)}" data-title="${esc(title)}">Queue <span aria-hidden="true">→</span></button>
       </div>
+      ${detail(k)}
     </div>
   </article>`;
 }

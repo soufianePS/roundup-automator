@@ -49,6 +49,10 @@ CREATE TABLE IF NOT EXISTS keyword_scores (
   hashtags          TEXT,
   peak_month        TEXT,                      -- when Pinterest demand peaks (e.g. "November")
   publish_by        TEXT,                      -- publish-by date to catch the rise (e.g. "mid-September")
+  annotations       TEXT,                      -- PinClicks interest annotations to reuse in title/desc
+  top_pin_saves     INTEGER,                   -- median saves of the top ~10 pins (real competition benchmark)
+  search_volume     INTEGER,                   -- raw PinClicks volume (order-of-magnitude)
+  trend_points      TEXT,                      -- JSON array of ~12 relative-interest points (0-100) for a sparkline
   source_notes      TEXT,                      -- raw signals / reasoning
   researched_at     TEXT DEFAULT (datetime('now'))
 );

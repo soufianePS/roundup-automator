@@ -35,6 +35,10 @@ function _migrate(db) {
   add('keyword_scores', 'peak_month', 'TEXT');
   add('keyword_scores', 'publish_by', 'TEXT');
   add('keyword_scores', 'ctr_intent', 'REAL');
+  add('keyword_scores', 'annotations', 'TEXT');
+  add('keyword_scores', 'top_pin_saves', 'INTEGER');
+  add('keyword_scores', 'search_volume', 'INTEGER');
+  add('keyword_scores', 'trend_points', 'TEXT');
 }
 
 export function tables() {

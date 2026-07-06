@@ -218,6 +218,25 @@ select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--
 .rc-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:2px;padding-top:12px;border-top:1px solid var(--hairline-2)}
 .rc-peak{font-family:var(--mono);font-size:11px;color:var(--muted)}
 .rc-foot .btn.sm.done{background:var(--good-bg);color:var(--good);border-color:transparent}
+/* expandable per-card detail */
+.rc-more{border-top:1px solid var(--hairline-2);margin-top:2px}
+.rc-more summary{cursor:pointer;list-style:none;font-family:var(--mono);font-size:10.5px;letter-spacing:.04em;color:var(--accent-press);padding:9px 0 1px;user-select:none}
+.rc-more summary::-webkit-details-marker{display:none}
+.rc-more summary::before{content:"▸ "}
+.rc-more[open] summary::before{content:"▾ "}
+.rc-detail{display:flex;flex-direction:column;gap:13px;padding:8px 0 2px}
+.rc-detail .dl{display:flex;align-items:center;justify-content:space-between;gap:10px;font-family:var(--mono);font-size:10.5px;color:var(--muted)}
+.spark{overflow:visible}
+.mgrid{display:grid;grid-template-columns:1fr 1fr;gap:11px 14px}
+.mgrid>div{display:flex;flex-direction:column;gap:1px}
+.mgrid span{font-family:var(--mono);font-size:9.5px;letter-spacing:.03em;color:var(--faint)}
+.mgrid b{font-family:var(--mono);font-size:15px;font-weight:600;letter-spacing:-.01em}
+.mgrid i{font-style:normal;font-size:9px;color:var(--faint)}
+.annos{display:flex;flex-wrap:wrap;gap:6px}
+.annos .annl{width:100%;font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);margin-bottom:1px}
+.atag{background:var(--accent-soft);color:var(--accent-press);border-radius:var(--r-pill);padding:2px 9px;font-size:11px}
+.afternote{font-family:var(--mono);font-size:9.5px;color:var(--faint);border-top:1px dashed var(--hairline);padding-top:8px}
+
 .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;font-size:13px;font-weight:550;padding:10px 18px;border-radius:var(--r-pill);box-shadow:var(--sh-lift);opacity:0;transition:opacity .3s var(--ease),transform .3s var(--ease);z-index:50;pointer-events:none}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(-4px)}
 
