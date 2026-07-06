@@ -105,36 +105,43 @@ stop at Keyword Explorer:
 - **Annotations** (per pin, one-click copy) — the interest tags Pinterest itself
   assigned to winning pins; paste them into the title/description you save.
 
-### Judging competition in PinClicks — there is NO difficulty score, so you MUST look
-PinClicks gives no "competition" number. Open **Top Pins, sorted by saves**, and read
-the top ~10 in this priority order (validated by cross-AI review):
-0. **BEST CASE — check this first: how many pins/accounts even target the exact
-   keyword?** If Top Pins returns **zero results, or just ONE account** actually
-   targeting that exact phrase, that is the strongest possible opportunity signal —
-   set `competition` to ~0.05–0.15 regardless of the other checks below. Nobody
-   competing beats "low saves but 20 competitors trying." Always look for this before
-   falling back to the saves-based read.
-1. **Saves on the top 10 (primary signal, when more than 0–1 competitors exist).**
-   Save = long-term planning intent, the action Pinterest values most. **>~1,000 saves
-   across most of the top 10 = locked (competition ≈ 0.8–1.0); <~100 saves on ≥3 top
-   spots = wide open (≈ 0.1–0.3).**
-2. **Freshness / created dates.** Top pins all **>12–18 months old and still ranking =
-   stale SERP = beatable** with a modern pin. A wall of pins <3 months old holding = hard.
-3. **Pinner authority / domain lockout.** A claimed-domain globe / verified blog on the
-   top spots = serious competition. **If the ranking accounts are major established
-   media** (e.g. The Spruce, Better Homes & Gardens, HGTV, Apartment Therapy, Good
-   Housekeeping) treat it as locked REGARDLESS of an individual pin's save count — a
-   12-save pin from a media giant still out-competes you on domain trust. Unclaimed
-   personal profiles or small independent blogs ranking = a real opening.
-4. **Visual sameness / format match.** If every top pin has the same composition
-   (e.g. all tight pumpkin close-ups) or the same format (all single hero photos, all
-   collages, all text-overlay listicles, all video pins), note which format dominates
-   — a different angle or format you can actually execute well can break in. If the
-   dominant format is one your pipeline can't beat (e.g. all professional collage
-   photography and yours would be a rough AI edit), that raises effective competition.
-Set the `competition` sub-signal mainly from #1, adjusted down by #2, up hard by #3 if
-media-dominated, and by #4. Locked SERP (high saves + fresh + big-media domains) →
-**skip and go longer-tail.**
+### Judging competition in PinClicks — the REAL rule (cross-AI validated)
+PinClicks has no difficulty score. **The #1 mistake is reading raw saves as difficulty.**
+The actual question is: *does this keyword have proof of demand but NO dominant exact-match
+winner?* Open **Top Pins** for the keyword and read the top 5–10 in this priority order:
+
+1. **Exact-match weakness (THE signal).** Count how many of the top 5 pins are *actually
+   about the exact keyword* vs. broad/roundup pins ranking "close enough". If Pinterest is
+   ranking **broad content ("Easy Fall Baking Ideas") for a specific query ("pumpkin cream
+   cheese muffins")**, that's your opening — a focused exact-match single post beats it.
+   Top 5 all tightly exact-match + polished = locked, skip.
+2. **Save VELOCITY, not raw saves.** `velocity = saves ÷ age_in_months`. A pin with 900
+   saves over 4 years (~19/mo) is beatable; 300 saves in 30 days (~300/mo) is dangerous.
+   **The single worst red flag = a FRESH (<90 day) exact-match pin already high-saved +
+   top-ranked** → Pinterest just crowned a current winner; skip.
+3. **Freshness of the incumbents.** Top pins all **>12–18 months old and still ranking =
+   stale SERP nobody refreshed = winnable** with a better/newer pin.
+4. **Domain lockout.** Top spots owned by major media (The Spruce, BHG, HGTV, Apartment
+   Therapy, Food Network, Martha Stewart) = treat as locked regardless of one pin's saves.
+   Independent/small blogs or unclaimed profiles ranking = a real opening.
+5. **Design/format gap.** Weak/illegible/stale designs among leaders = beatable; a format
+   you can't execute (all pro collage photography vs. your edit) raises effective competition.
+
+**Concrete thresholds (niche-split — recipes naturally collect more saves than home/DIY):**
+- **RECIPE keyword winnable (green)** if ≥3 true: top-10 median saves < ~300–500; ≥3 pins
+  under ~150 saves; no more than 2 pins over ~1,000 saves; no fresh (<3mo) pin already
+  over ~300–500 saves.
+- **HOME/FAMILY how-to winnable (green)** if ≥3 true: top-10 median saves < ~150–250; ≥3
+  pins under ~75–100 saves; top 3 older than 6–12 months with < ~250 saves each.
+- **RED / skip (any):** top 5 all exact-match + polished; a <90-day exact-match pin with
+  500+ saves; top-10 median saves > ~1,000; the *same* pins rank on both desktop & mobile
+  (stable SERP); the keyword is broad/plural ("game day dips", "fall desserts").
+
+Map to the `competition` sub-signal: green → ~0.15–0.35, yellow (mixed) → ~0.45–0.6,
+red → ≥0.7 (which the gate then tanks). **NEW-BLOG (this account): stricter** — require
+≥6 of the top 10 under ~150 saves, and the #1–2 pins must be under ~100 saves OR older
+than ~2 years. Always record the actual saves/ages/exact-match count you saw in
+`source_notes` — if you didn't open Top Pins, you didn't measure competition.
 
 ### Content-feasibility gate (roundups only) — can we actually source this?
 Before approving a roundup topic, confirm you can find **~1.5× the needed real,
@@ -296,11 +303,13 @@ data yet — once real pins have 30–90 days of performance, compare predicted 
 actual outbound clicks (via the `performance` table) and adjust.
 
 Each sub-signal is 0–1:
-- **demand** — PinClicks volume, **long-tail biased**: treat volume as *order of
-  magnitude / a qualification filter*, not a literal count. Down-weight head terms even
-  if huge (they're where competition locks you out). Weighted lower than ctr_intent —
-  for a new account, the "biggest" keyword matters less than one Pinterest will
-  actually let you win.
+- **demand** — PinClicks volume, **comparative only** (unit unknown — never a literal
+  monthly count), **long-tail biased**. NEW-BLOG volume floor (cross-AI consensus):
+  sweet spot **~1,000–5,000**; below ~1,000 the traffic won't repay the work UNLESS the
+  keyword is very specific with clear click intent AND part of a cluster; above ~10,000
+  is usually locked for a zero-trust domain — go longer-tail. Also accept a **relative
+  floor**: keyword ≥ ~5–10% of its parent seed's volume, or a **cluster floor** (several
+  sibling keywords that together justify one post). Down-weight head terms even if huge.
 - **ctr_intent** — will searchers CLICK to the blog, or does the Pin image alone
   already answer them (saves, no visit)? Don't judge by phrasing alone — check the
   **Top Pins SERP itself**:
@@ -320,9 +329,10 @@ Each sub-signal is 0–1:
 - **momentum** — Trends 30-day curve rising (a whole related cluster rising = high).
 - **fit** — thematic coherence to a site category (Pinterest scores image↔title↔board↔
   landing-page consistency; incoherence gets suppressed, so only keep on-theme picks).
-- **competition** — 0=open, 1=locked. Read it primarily from **Top-10 saves** (see
-  hierarchy below). The `^1.5` gate punishes high competition hard, which is correct for
-  a new account; as the account gains authority you can relax the exponent toward 1.
+- **competition** — 0=open, 1=locked. Read it from Top Pins using the exact-match-weakness
+  + save-velocity + threshold rules above (NOT raw saves). The tiered gate (reject ≥0.6,
+  ^2.2 mid, ^1.5 low) punishes competition hard, correct for this new account; relax later
+  as the account earns authority.
 
 Output an **opportunity score**, NOT a virality promise. Be honest.
 
@@ -341,6 +351,20 @@ Don't default every topic to a numbered listicle. Read what the user actually as
 - When unclear, default to whichever format matches how the keyword itself reads (a
   broad theme → roundup; a specific question or single idea → single) rather than
   always assuming roundup.
+- **CHECK THE SERP, not just the phrasing (cross-AI rule).** Even when the keyword reads
+  singular, look at its Top Pins: if the top 5 are **roundups/collages/numbered lists**,
+  Pinterest has decided this query wants a *list* — a single post will struggle; either
+  make it a roundup or pick a more specific long-tail. Only commit to a single post when
+  the Top Pins confirm single-deliverable intent (they show the same one dish/project/
+  result, links go to one recipe/tutorial). Single-intent phrasing patterns:
+  `[ingredient] [dish]` ("pumpkin cream cheese muffins"), `[method] [dish]` ("air fryer
+  chicken thighs"), `[dish] recipe`, `how to [task]`, `[X] without/with [ingredient]`.
+  Roundup phrasing: "ideas / inspo / best / ways to / [number] / party food / dinner ideas".
+- **ONE TOPIC = ONE POST, not one keyword = one post.** Cluster the close variations
+  ("pumpkin cream cheese muffins" / "…recipe" / "easy…" / "…with cake mix") into a SINGLE
+  article, and target the variations with different *pins*, not separate thin articles.
+  So `add_topic` ONCE per cluster (the best exact-match title); note the sibling variations
+  in `source_notes` as the pin angles. Never queue 4 near-duplicate topics.
 - **pin_description**: 2–3 natural sentences with the exact keyword once + 2–3 related
   terms **written as plain language, not a keyword list**. Pinterest is a search
   engine — sentence-form keywords rank; keyword-stuffing gets suppressed.
