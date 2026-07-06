@@ -14,6 +14,7 @@ import { DolphinAnty } from './shared/dolphin.js';
 import { probePinterestAccount } from './shared/pinterest-probe.js';
 import { startAgentRun, subscribeAgentRun, stopAgentRun } from './shared/agent-runner.js';
 import { openLoginSession, closeLoginSession, isLoginSessionOpen, profileExists, DEFAULT_TABS } from './shared/research-browser.js';
+import { listProfiles, createProfile, setActiveProfile, activeProfileName } from './shared/profiles.js';
 import { secretOpt, saveSecretSection } from './config.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -141,6 +142,28 @@ app.post('/api/browser/open', async (req, res) => {
 });
 app.post('/api/browser/close', async (req, res) => {
   try { res.json(await closeLoginSession()); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// ── Browser PROFILES (switch/add without deleting the old one) ──
+app.get('/api/browser/profiles', (req, res) => {
+  try { res.json({ active: activeProfileName(), profiles: listProfiles() }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Create a NEW empty profile and make it active (old profiles are untouched).
+app.post('/api/browser/profiles', async (req, res) => {
+  try {
+    if (isLoginSessionOpen()) await closeLoginSession();
+    const name = createProfile((req.body || {}).name);
+    res.json({ ok: true, active: name });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+// Switch which existing profile is active.
+app.post('/api/browser/profiles/activate', async (req, res) => {
+  try {
+    if (isLoginSessionOpen()) await closeLoginSession();
+    const name = setActiveProfile((req.body || {}).name);
+    res.json({ ok: true, active: name });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
 // ── Trends fast harvest (network API — seconds, no agent needed) ──

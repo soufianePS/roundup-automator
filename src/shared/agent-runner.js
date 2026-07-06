@@ -8,7 +8,32 @@
  */
 import { spawn } from 'child_process';
 import { join } from 'path';
+import { readFileSync, writeFileSync } from 'fs';
 import { Logger } from './logger.js';
+import { activeProfileName } from './profiles.js';
+
+/**
+ * Build a runtime MCP config from the committed template, with the Playwright
+ * browser's --user-data-dir pointed at the ACTIVE profile. Written to a local
+ * (gitignored) file so switching profiles never edits the committed template.
+ */
+function resolveMcpConfig(cwd) {
+  const templatePath = join(cwd, 'mcp.config.json');
+  try {
+    const cfg = JSON.parse(readFileSync(templatePath, 'utf8'));
+    const args = cfg?.mcpServers?.playwright?.args;
+    if (Array.isArray(args)) {
+      const i = args.indexOf('--user-data-dir');
+      if (i >= 0 && args[i + 1] !== undefined) args[i + 1] = `data/browser-profiles/${activeProfileName()}`;
+    }
+    const outPath = join(cwd, 'data', 'mcp.runtime.json');
+    writeFileSync(outPath, JSON.stringify(cfg, null, 2));
+    return outPath;
+  } catch (e) {
+    Logger.warn(`[agent] could not build runtime mcp config, using template: ${e.message}`);
+    return templatePath;
+  }
+}
 
 // Tools the headless agent may use without prompting. Full file access (Read/
 // Write/Edit) + Bash (run node scripts, call localhost) + web research + the
@@ -78,7 +103,7 @@ function _toolInfo(name, input) {
 
 export function startAgentRun(prompt, { sessionId = null, cwd } = {}) {
   const runId = (globalThis.crypto?.randomUUID?.() || String(Date.now()));
-  const mcpConfig = join(cwd || process.cwd(), 'mcp.config.json');
+  const mcpConfig = resolveMcpConfig(cwd || process.cwd());
   const args = ['-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages',
     '--permission-mode', 'dontAsk', '--allowedTools', ALLOWED_TOOLS,
     '--mcp-config', mcpConfig, '--strict-mcp-config',

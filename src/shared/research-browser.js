@@ -12,13 +12,13 @@
  * the agent's browser cannot run simultaneously — close one before the other.
  */
 import { chromium } from 'playwright';
-import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
 import { existsSync } from 'fs';
 import { Logger } from './logger.js';
+import { activeProfileDir } from './profiles.js';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const PROFILE_DIR = join(__dirname, '..', '..', 'data', 'browser-profiles', 'research');
+// Always resolve the CURRENTLY active profile (switchable in Settings) so the
+// login window opens whichever profile the agent will actually use.
+const PROFILE_DIR = () => activeProfileDir();
 
 // Tabs opened on login so the owner can sign into everything in one pass.
 export const DEFAULT_TABS = [
@@ -31,16 +31,16 @@ export const DEFAULT_TABS = [
 
 let _ctx = null; // the live login-session context, if open
 
-export const researchProfileDir = () => PROFILE_DIR;
+export const researchProfileDir = () => PROFILE_DIR();
 export const isLoginSessionOpen = () => !!_ctx;
-export const profileExists = () => existsSync(PROFILE_DIR);
+export const profileExists = () => existsSync(PROFILE_DIR());
 
 /** Launch the persistent profile (headed) and open the login tabs. */
 export async function openLoginSession(tabs = DEFAULT_TABS) {
   if (_ctx) return { ok: true, already: true };
   let ctx;
   try {
-    ctx = await chromium.launchPersistentContext(PROFILE_DIR, {
+    ctx = await chromium.launchPersistentContext(PROFILE_DIR(), {
       headless: false,
       viewport: null,
       args: ['--disable-blink-features=AutomationControlled', '--no-first-run', '--no-default-browser-check',

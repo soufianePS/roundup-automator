@@ -34,6 +34,20 @@
         </div>
         <p class="fhint" style="margin-top:10px">⚠ Close this window before asking the agent to browse — they share one profile.</p>
       </div>
+      <div class="section">
+        <h3>Profiles</h3>
+        <p class="desc">Use multiple logged-in profiles and switch the <b>active</b> one. If a profile gets blocked (e.g. PinClicks Cloudflare), add a fresh one and log in there — your old profile is kept, never deleted.</p>
+        <div class="picker">
+          <select id="profSel"></select>
+          <button class="btn" id="profActivate">Make active</button>
+        </div>
+        <div class="picker" style="margin-top:10px">
+          <input id="profNew" placeholder="new-profile-name" style="min-width:200px">
+          <button class="btn primary" id="profAdd">Add &amp; switch</button>
+          <span class="status idle" id="profStatus"></span>
+        </div>
+        <p class="fhint" style="margin-top:10px">After adding/switching, click <b>Open browser to log in</b> above to sign into the active profile.</p>
+      </div>
     </div></div>
 
     <!-- Sites: two-pane list + editor -->
@@ -109,6 +123,25 @@ async function loadBrowser(){
 }
 $('brOpen').onclick = async ()=>{ setStatus('brStatus','busy','opening browser…'); const r=await jfetch('/api/browser/open',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}); if(r.error) setStatus('brStatus','err',r.error); else loadBrowser(); };
 $('brClose').onclick = async ()=>{ await jfetch('/api/browser/close',{method:'POST'}); loadBrowser(); };
+
+// ── Browser profiles ──
+async function loadProfiles(){
+  const r = await jfetch('/api/browser/profiles');
+  if(r.error) return;
+  const sel = $('profSel'); sel.innerHTML='';
+  (r.profiles||[]).forEach(p=>{ const o=document.createElement('option'); o.value=p.name; o.textContent=p.name+(p.active?' (active)':''); if(p.active)o.selected=true; sel.appendChild(o); });
+}
+$('profActivate').onclick = async ()=>{
+  const name=$('profSel').value; setStatus('profStatus','busy','switching…');
+  const r=await jfetch('/api/browser/profiles/activate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});
+  if(r.error) setStatus('profStatus','err',r.error); else { setStatus('profStatus','ok','active: '+r.active); loadProfiles(); loadBrowser(); }
+};
+$('profAdd').onclick = async ()=>{
+  const name=$('profNew').value.trim(); if(!name){ setStatus('profStatus','err','name required'); return; }
+  setStatus('profStatus','busy','creating…');
+  const r=await jfetch('/api/browser/profiles',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});
+  if(r.error) setStatus('profStatus','err',r.error); else { $('profNew').value=''; setStatus('profStatus','ok','active: '+r.active+' — now click Open to log in'); loadProfiles(); loadBrowser(); }
+};
 
 // ── Sites ──
 function blank(){ return { id:null, name:'', wp_url:'', wp_username:'', wp_app_password:'', wp_site_name:'', wp_authors:[], categories:[], pinterest_accounts:[], active:false }; }
@@ -190,5 +223,5 @@ $('delBtn').onclick=async()=>{ if(cur.id && confirm('Delete this site?')){ await
 $('pinChips').onclick=e=>{ const b=e.target.closest('button[data-rm]'); if(!b) return; cur.pinterest_accounts.splice(+b.dataset.rm,1); renderPins(); };
 $('siteList').onclick=e=>{ const it=e.target.closest('.site-item[data-id]'); if(!it) return; cur=JSON.parse(JSON.stringify(sites.find(s=>s.id==it.dataset.id))); loadSites(); renderEditor(); };
 
-(async function init(){ await loadSites(); loadDolphin(); loadBrowser(); })();
+(async function init(){ await loadSites(); loadDolphin(); loadBrowser(); loadProfiles(); })();
 </script>

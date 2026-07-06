@@ -14,12 +14,9 @@
  * the agent browser / login window is closed.
  */
 import { chromium } from 'playwright';
-import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
 import { Logger } from './logger.js';
+import { activeProfileDir } from './profiles.js';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const PROFILE = join(__dirname, '..', '..', 'data', 'browser-profiles', 'research');
 const BASE = 'https://trends.pinterest.com';
 
 // UI category name → l1interests id (harvested from the live filter, 2026-07)
@@ -61,7 +58,7 @@ export function weeklyWindowsLastYear({ from = 30, to = 90, stepDays = 7, today 
 }
 
 async function openApi() {
-  const ctx = await chromium.launchPersistentContext(PROFILE, { headless: true });
+  const ctx = await chromium.launchPersistentContext(activeProfileDir(), { headless: true });
   return {
     ctx,
     get: async (path, params) => {
