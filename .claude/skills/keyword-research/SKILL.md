@@ -85,9 +85,16 @@ stop at Keyword Explorer:
 ### Judging competition in PinClicks — there is NO difficulty score, so you MUST look
 PinClicks gives no "competition" number. Open **Top Pins, sorted by saves**, and read
 the top ~10 in this priority order (validated by cross-AI review):
-1. **Saves on the top 10 (primary signal).** Save = long-term planning intent, the
-   action Pinterest values most. **>~1,000 saves across most of the top 10 = locked
-   (competition ≈ 0.8–1.0); <~100 saves on ≥3 top spots = wide open (≈ 0.1–0.3).**
+0. **BEST CASE — check this first: how many pins/accounts even target the exact
+   keyword?** If Top Pins returns **zero results, or just ONE account** actually
+   targeting that exact phrase, that is the strongest possible opportunity signal —
+   set `competition` to ~0.05–0.15 regardless of the other checks below. Nobody
+   competing beats "low saves but 20 competitors trying." Always look for this before
+   falling back to the saves-based read.
+1. **Saves on the top 10 (primary signal, when more than 0–1 competitors exist).**
+   Save = long-term planning intent, the action Pinterest values most. **>~1,000 saves
+   across most of the top 10 = locked (competition ≈ 0.8–1.0); <~100 saves on ≥3 top
+   spots = wide open (≈ 0.1–0.3).**
 2. **Freshness / created dates.** Top pins all **>12–18 months old and still ranking =
    stale SERP = beatable** with a modern pin. A wall of pins <3 months old holding = hard.
 3. **Pinner authority.** A claimed-domain globe / verified blog on the top spots = serious
@@ -112,6 +119,24 @@ Every saved keyword's `source_notes` must state what the Top Pins looked like (s
 account size, freshness) — if you didn't open Top Pins, you didn't check competition.
 
 ## Reading Pinterest Trends for ANY date (the core skill)
+
+There are TWO ways in: seed-first (you already have a keyword guess) or **category
+discovery** (you don't — you just want to know what's worth writing about). Prefer
+category discovery when the user gives you a broad ask ("find me topics") rather than
+a specific keyword; it surfaces ideas you wouldn't have guessed to type.
+
+### Category + date-window discovery (use this FIRST when there's no seed keyword)
+1. Go to Pinterest Trends, set **Region → United States**, then pick the **Category**
+   filter for the niche (e.g. "Food and Drinks", "Home Decor") instead of typing a seed.
+2. Set the **date window forward** — today's date out to **+30 to +90 days** (this is
+   exactly the lead-time window you'll need to publish in anyway). Browsing the
+   category filtered to that future window shows what's *about to* be in demand, not
+   just what's hot today.
+3. Scan the **Growing / Seasonal leaderboard** inside that category+window for the best
+   topics — the ones with a clear rising curve landing inside your window.
+4. Take each promising leaderboard topic as your "seed" and run it through the normal
+   workflow below (Trends detail + PinClicks). Category browsing finds candidates;
+   PinClicks + Top Pins still decides if each one is actually winnable.
 
 When the user asks "what should we publish for [month/season/date]", do this:
 
