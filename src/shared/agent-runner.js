@@ -8,9 +8,17 @@
  */
 import { spawn, spawnSync } from 'child_process';
 import { join } from 'path';
-import { readFileSync, writeFileSync } from 'fs';
+import { homedir } from 'os';
+import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { Logger } from './logger.js';
 import { activeProfileName } from './profiles.js';
+
+// Antigravity ships `agy.exe` (not always on the shell PATH). Resolve it directly.
+const AGY_PATHS = [
+  join(homedir(), 'AppData', 'Local', 'agy', 'bin', 'agy.exe'),
+  join(homedir(), 'AppData', 'Roaming', 'Antigravity', 'bin', 'agy-node.cmd'),
+];
+const AGY_BIN = AGY_PATHS.find(p => existsSync(p)) || 'agy';
 
 /**
  * Build a runtime MCP config from the committed template, with the Playwright
@@ -123,13 +131,14 @@ const PROVIDERS = {
     parse: parseCodexLine,
   },
   antigravity: {
-    label: 'Antigravity (agy)',
-    detect: () => detectBin('agy', true),
-    // Adapter assumes an `agy` CLI with a non-interactive exec + MCP config, mirroring
-    // codex. Flags may need tweaking once installed — validate before relying on it.
-    spawn: (cwd, { mcpConfig }) => spawn('agy', ['exec', '--json', '--mcp-config', mcpConfig, '-'], { cwd, shell: true }),
+    label: 'Antigravity (Gemini)',
+    detect: () => AGY_BIN !== 'agy' && existsSync(AGY_BIN),
+    // agy has no --json / --mcp-config: headless `-p` prints PLAIN TEXT, and MCP tools
+    // are imported into its plugin config (see ensureAgyMcp). So: plain-text streaming,
+    // briefing prepended, prompt via stdin. Long print-timeout for the pipeline.
+    spawn: (cwd) => spawn(AGY_BIN, ['-p', '--dangerously-skip-permissions', '--add-dir', cwd, '--print-timeout', '15m0s'], { cwd, shell: false }),
     prompt: (p) => SYSTEM_BRIEFING + '\n\n---\n\n' + p,
-    parse: parseCodexLine,   // best-effort; agy output format TBD
+    plainText: true,
   },
 };
 
@@ -214,6 +223,9 @@ export function startAgentRun(prompt, { sessionId = null, cwd, provider = 'claud
 
   let buf = '';
   proc.stdout.on('data', (chunk) => {
+    if (drv.plainText) {   // agy: not JSON — stream raw text straight through
+      run.streamedText = true; _emit(run, { type: 'text', text: chunk.toString() }); return;
+    }
     buf += chunk.toString();
     const lines = buf.split('\n'); buf = lines.pop();
     for (const ln of lines) {
