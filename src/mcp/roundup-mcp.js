@@ -169,10 +169,11 @@ server.tool('harvest_trends',
     toDays: z.number().int().optional().describe('Forecast horizon end, days from today (default 90).'),
     perCall: z.number().int().optional().describe('Terms per leaderboard call (default 25).'),
     top: z.number().int().optional().describe('Return only the top N merged terms (default 60).'),
+    force: z.boolean().optional().describe('Bypass the 6h cache and re-fetch (default false — repeat harvests of the same category return instantly from cache).'),
   },
-  wrap(async ({ interest, presets, fromDays, toDays, perCall, top }) => {
+  wrap(async ({ interest, presets, fromDays, toDays, perCall, top, force }) => {
     const weeks = weeklyWindowsLastYear({ from: fromDays ?? 30, to: toDays ?? 90 });
-    const res = await harvestTrends({ interest: interest || null, presets: presets || ['growing', 'seasonal'], weeks, perCall: perCall ?? 25 });
+    const res = await harvestTrends({ interest: interest || null, presets: presets || ['growing', 'seasonal'], weeks, perCall: perCall ?? 25, force: !!force });
     return { ...res, terms: res.terms.slice(0, top ?? 60) };
   }));
 
@@ -189,8 +190,9 @@ server.tool('pinclicks_enrich',
   {
     keywords: z.array(z.string()).min(1).max(8),
     max: z.number().int().optional().describe('Hard cap (default 8).'),
+    force: z.boolean().optional().describe('Bypass the 3-day per-keyword cache and re-look-up live (default false — already-seen keywords return instantly with no browser + no Cloudflare risk).'),
   },
-  wrap(async ({ keywords, max }) => enrichKeywords(keywords, { max: max ?? 8 })));
+  wrap(async ({ keywords, max, force }) => enrichKeywords(keywords, { max: max ?? 8, force: !!force })));
 
 // ─────────────────────────── Data / introspection (full visibility) ───────────────────────────
 server.tool('sql_query',

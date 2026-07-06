@@ -14,10 +14,29 @@
  * the agent browser / login window is closed.
  */
 import { chromium } from 'playwright';
+import { createHash } from 'crypto';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { Logger } from './logger.js';
 import { activeProfileDir } from './profiles.js';
 
 const BASE = 'https://trends.pinterest.com';
+const CACHE_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'data', 'cache', 'trends');
+const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6h — Trends data barely moves within a day
+
+function cacheGet(key, ttl) {
+  try {
+    const f = join(CACHE_DIR, key + '.json');
+    if (!existsSync(f)) return null;
+    const { ts, data } = JSON.parse(readFileSync(f, 'utf8'));
+    if (Date.now() - ts > ttl) return null;
+    return { data, ageMs: Date.now() - ts };
+  } catch { return null; }
+}
+function cachePut(key, data) {
+  try { mkdirSync(CACHE_DIR, { recursive: true }); writeFileSync(join(CACHE_DIR, key + '.json'), JSON.stringify({ ts: Date.now(), data })); } catch {}
+}
 
 // UI category name → l1interests id (harvested from the live filter, 2026-07)
 export const INTEREST_IDS = {
@@ -85,8 +104,19 @@ export async function harvestTrends(opts = {}) {
     weeks = weeklyWindowsLastYear(),
     country = 'US',
     perCall = 25,
+    ttlMs = CACHE_TTL_MS,
+    force = false,
   } = opts;
   const interestId = resolveInterest(interest);
+
+  // Don't redo identical harvests within the TTL — same category+weeks returns the
+  // same leaderboard all day. Cache keyed on the exact request shape.
+  const key = createHash('sha1').update(JSON.stringify({ interestId, presets, weeks, country, perCall })).digest('hex').slice(0, 16);
+  if (!force) {
+    const hit = cacheGet(key, ttlMs);
+    if (hit) { Logger.info(`[trends-api] cache hit (${Math.round(hit.ageMs / 1000)}s old) — ${hit.data.terms.length} terms, 0 network calls`); return { ...hit.data, cached: true }; }
+  }
+
   const api = await openApi();
   const terms = new Map();   // term → merged record
   const t0 = Date.now();
@@ -129,7 +159,9 @@ export async function harvestTrends(opts = {}) {
     .map(r => ({ ...r, presets: [...r.presets], weeksSeen: r.weeks.length }))
     .sort((a, b) => b.weeksSeen - a.weeksSeen || b.bestNormalizedCount - a.bestNormalizedCount);
   Logger.success(`[trends-api] harvested ${list.length} unique terms in ${((Date.now() - t0) / 1000).toFixed(1)}s (${weeks.length} weeks × ${presets.length} presets)`);
-  return { terms: list, weeks, presets, interest: interest || 'all', country };
+  const out = { terms: list, weeks, presets, interest: interest || 'all', country };
+  cachePut(key, out);
+  return { ...out, cached: false };
 }
 
 /**
@@ -143,8 +175,14 @@ export async function fetchCurves(termList, { country = 'US' } = {}) {
     const out = [];
     for (let i = 0; i < termList.length; i += 25) {
       const batch = termList.slice(i, i + 25);
-      const j = await api.get('/metrics/', { terms: batch.join(','), country });
-      for (const k of Object.keys(j)) out.push(j[k]);
+      try {
+        const j = await api.get('/metrics/', { terms: batch.join(','), country });
+        for (const k of Object.keys(j)) out.push(j[k]);
+      } catch (e) {
+        // The /metrics/ endpoint needs in-page headers we can't forge from ctx.request
+        // (often 400s). Non-fatal — curves/sparkline are cosmetic; harvest metrics suffice.
+        Logger.warn(`[trends-api] curves batch skipped: ${e.message}`);
+      }
     }
     return out;
   } finally {

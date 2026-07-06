@@ -12,12 +12,33 @@
  * (close the Settings login window first; only one Chromium can hold the profile).
  */
 import { chromium } from 'playwright';
+import { createHash } from 'crypto';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { Logger } from './logger.js';
 import { activeProfileDir } from './profiles.js';
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const rand = (a, b) => a + Math.random() * (b - a);
 const KW_URL = 'https://app.pinclicks.com/keyword-explorer';
+
+// Per-keyword cache. PinClicks volumes are monthly-ish, so a few days is safe — and
+// every cache hit is one fewer slow (~25s) + Cloudflare-risky live lookup.
+const CACHE_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'data', 'cache', 'pinclicks');
+const CACHE_TTL_MS = 3 * 24 * 60 * 60 * 1000;
+const ckey = (kw) => createHash('sha1').update(kw).digest('hex').slice(0, 16);
+function cacheGet(kw) {
+  try {
+    const f = join(CACHE_DIR, ckey(kw) + '.json');
+    if (!existsSync(f)) return null;
+    const { ts, data } = JSON.parse(readFileSync(f, 'utf8'));
+    return (Date.now() - ts > CACHE_TTL_MS) ? null : data;
+  } catch { return null; }
+}
+function cachePut(kw, data) {
+  try { mkdirSync(CACHE_DIR, { recursive: true }); writeFileSync(join(CACHE_DIR, ckey(kw) + '.json'), JSON.stringify({ ts: Date.now(), data })); } catch {}
+}
 
 function looksBlocked(title, url) {
   return /just a moment|attention required|cloudflare/i.test(title || '') || /challenge|blocked/i.test(url || '');
@@ -55,9 +76,21 @@ async function scrapeTable(page) {
  *   results: [{ keyword, volume, related:[{keyword,volume}] }]
  */
 export async function enrichKeywords(keywords, opts = {}) {
-  const { max = 8, minDelayMs = 18000, maxDelayMs = 35000 } = opts;
-  const list = [...new Set((keywords || []).map(k => String(k).trim().toLowerCase()).filter(Boolean))].slice(0, max);
-  if (!list.length) return { results: [], blocked: false, done: true };
+  const { max = 8, minDelayMs = 18000, maxDelayMs = 35000, force = false } = opts;
+  const requested = [...new Set((keywords || []).map(k => String(k).trim().toLowerCase()).filter(Boolean))].slice(0, max);
+  if (!requested.length) return { results: [], blocked: false, done: true };
+
+  // Serve cached keywords instantly; only browse the misses (fewer slow + risky hits).
+  const results = [];
+  const toFetch = [];
+  for (const kw of requested) {
+    const hit = force ? null : cacheGet(kw);
+    if (hit) results.push({ ...hit, cached: true });
+    else toFetch.push(kw);
+  }
+  if (!toFetch.length) { Logger.info(`[pinclicks] all ${requested.length} keywords from cache — 0 live lookups`); return { results, blocked: false, done: true, fromCache: results.length }; }
+  Logger.info(`[pinclicks] ${results.length} cached, ${toFetch.length} to look up live`);
+  const list = toFetch;
 
   const ctx = await chromium.launchPersistentContext(activeProfileDir(), {
     headless: false, viewport: null,
@@ -65,14 +98,13 @@ export async function enrichKeywords(keywords, opts = {}) {
     ignoreDefaultArgs: ['--enable-automation'],
   });
   const page = ctx.pages()[0] || await ctx.newPage();
-  const results = [];
   let blocked = false;
   try {
     await page.goto(KW_URL, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
     await sleep(rand(5000, 8000));
     if (looksBlocked(await page.title(), page.url())) {
       Logger.warn('[pinclicks] Cloudflare block detected on load — aborting. Try a fresh profile (Settings → Profiles).');
-      return { results: [], blocked: true, done: false };
+      return { results, blocked: true, done: false };  // return any cached results we already had
     }
 
     for (let i = 0; i < list.length; i++) {
@@ -90,11 +122,13 @@ export async function enrichKeywords(keywords, opts = {}) {
 
       const rows = await scrapeTable(page);
       const self = rows.find(r => r.keyword === kw) || rows.find(r => r.keyword.includes(kw)) || null;
-      results.push({
+      const rec = {
         keyword: kw,
         volume: self?.volume ?? null,
         related: rows.filter(r => r.keyword !== (self?.keyword)).slice(0, 12),
-      });
+      };
+      results.push(rec);
+      cachePut(kw, rec);   // remember so we never re-browse this keyword within the TTL
       Logger.info(`[pinclicks] ${kw} → vol ${self?.volume ?? '?'}, ${rows.length} rows (${i + 1}/${list.length})`);
 
       if (i < list.length - 1) await sleep(rand(minDelayMs, maxDelayMs)); // human gap
