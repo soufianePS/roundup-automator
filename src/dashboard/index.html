@@ -44,7 +44,7 @@
     <section class="kpis" id="kpis" hidden>
       <div class="kpi"><div class="label">Topics found</div><div class="val num" id="kTotal">–</div><div class="sub" id="kFresh">latest scan</div></div>
       <div class="kpi"><div class="label">Avg viral potential</div><div class="val num" id="kAvg">–</div><div class="sub">across the batch</div></div>
-      <div class="kpi"><div class="label">High-potential</div><div class="val num" id="kHigh">–</div><div class="sub">scoring 70+</div></div>
+      <div class="kpi"><div class="label">Winnable</div><div class="val num" id="kWin">–</div><div class="sub">soft SERP · low comp</div></div>
       <div class="kpi"><div class="label">Top pick</div><div class="val num" id="kTop">–</div><div class="sub" id="kTopKw">—</div></div>
     </section>
 
@@ -102,9 +102,15 @@ function momBadge(m){ m=norm01(m); if(m==null) return '';
 function ctrBadge(v){ v=norm01(v); if(v==null) return '';
   const [cls,txt] = v>=0.6 ? ['good','↗ high clicks'] : v>=0.4 ? ['warn','~ some clicks'] : ['high','◡ saves only'];
   return `<span class="chip ${cls}"><span class="d"></span>${txt}</span>`; }
+// The headline decision signal: the SERP competition verdict from the Top-Pins read.
+function verdict(c){ c=norm01(c); if(c==null) return null;
+  return c<=0.35 ? {cls:'good',txt:'WINNABLE'} : c<=0.6 ? {cls:'warn',txt:'MAYBE'} : {cls:'high',txt:'LOCKED'}; }
+function verdictBadge(c){ const v=verdict(c); return v? `<span class="chip ${v.cls} vd"><span class="d"></span>${v.txt}</span>`:''; }
 
 const pct = v => { v=norm01(v); return v==null ? '—' : Math.round(v*100)+'%'; };
 const fmt = n => (n==null||n==='') ? '—' : Number(n).toLocaleString();
+// opportunity_score: agents sometimes save 0-1 instead of 0-100 — normalize defensively.
+const score100 = v => { v=Number(v)||0; if(v>0 && v<=1) v*=100; return Math.max(0, Math.min(100, Math.round(v))); };
 
 function sparkline(raw){
   let p; try{ p = typeof raw==='string'?JSON.parse(raw):raw; }catch{ return ''; }
@@ -126,10 +132,10 @@ function detail(k){
   return `<details class="rc-more"><summary>More data</summary><div class="rc-detail">
     ${spark?`<div class="dl"><span>12-mo interest · relative</span><span>${spark}</span></div>`:''}
     <div class="mgrid">
+      <div><span>SERP verdict</span><b>${(verdict(k.competition)||{txt:'—'}).txt}</b><i>${k.competition!=null?'comp '+pct(k.competition):'not checked'}</i></div>
+      <div><span>Top-pin saves</span><b>${fmt(k.top_pin_saves)}</b><i>what winners earn</i></div>
       <div><span>Search volume</span><b>${fmt(k.search_volume)}</b><i>PinClicks · est.</i></div>
-      <div><span>Top-pin saves</span><b>${fmt(k.top_pin_saves)}</b><i>winners here</i></div>
-      <div><span>Click intent</span><b>${pct(k.ctr_intent)}</b><i>est.</i></div>
-      <div><span>Competition</span><b>${pct(k.competition)}</b><i>lower = better</i></div>
+      <div><span>Click intent</span><b>${pct(k.ctr_intent)}</b><i>click vs save</i></div>
       <div><span>Momentum</span><b>${pct(k.momentum)}</b><i>rising</i></div>
       <div><span>Reach outlook</span><b>${reachTxt}</b><i>est.</i></div>
     </div>
@@ -139,7 +145,7 @@ function detail(k){
 }
 
 function card(k){
-  const s = Math.max(0, Math.min(100, Math.round(k.opportunity_score ?? 0)));
+  const s = score100(k.opportunity_score);
   const title = k.title_suggestion || k.keyword;
   const when = k.publish_by ? `Publish by ${esc(k.publish_by)}` : '';
   const peak = k.peak_month ? `peaks ${esc(k.peak_month)}` : '';
@@ -153,7 +159,7 @@ function card(k){
           <div class="rc-kw">${esc(k.keyword)}</div>
         </div>
       </div>
-      <div class="rc-badges">${compChip(k.competition)}${ctrBadge(k.ctr_intent)}${momBadge(k.momentum)}${when?`<span class="win">${when}</span>`:''}</div>
+      <div class="rc-badges">${verdictBadge(k.competition)}${ctrBadge(k.ctr_intent)}${momBadge(k.momentum)}${when?`<span class="win">${when}</span>`:''}</div>
       ${k.source_notes?`<div class="rc-why">${esc(k.source_notes)}</div>`:'<div class="rc-why"></div>'}
       <div class="rc-foot">
         <span class="rc-peak">${peak}</span>
@@ -177,18 +183,18 @@ async function loadRadar(){
   let shown = afterId ? rows.filter(r => r.id > afterId) : rows.slice(0,15);
   if(afterId && !shown.length) shown = rows.slice(0,15);
   rows = shown;
-  rows.sort((a,b)=>(b.opportunity_score??0)-(a.opportunity_score??0));
+  rows.sort((a,b)=>score100(b.opportunity_score)-score100(a.opportunity_score));
   const grid=$('grid');
   if(!rows.length){ grid.innerHTML=''; $('emptyState').classList.remove('hidden'); $('kpis').hidden=true; $('gridHint').textContent=''; return; }
   $('emptyState').classList.add('hidden');
   grid.innerHTML = rows.map(card).join('');
   grid.querySelectorAll('button[data-kw]').forEach(b=> b.onclick=()=>queueTopic(b));
   // KPIs
-  const scores = rows.map(r=>r.opportunity_score??0);
+  const scores = rows.map(r=>score100(r.opportunity_score));
   const avg = Math.round(scores.reduce((a,c)=>a+c,0)/scores.length);
-  const high = scores.filter(s=>s>=70).length;
-  $('kTotal').textContent=rows.length; $('kAvg').textContent=avg; $('kHigh').textContent=high;
-  $('kTop').textContent=Math.round(rows[0].opportunity_score??0); $('kTopKw').textContent=rows[0].keyword;
+  const winnable = rows.filter(r=>{ const c=norm01(r.competition); return c!=null && c<=0.35; }).length;
+  $('kTotal').textContent=rows.length; $('kAvg').textContent=avg; $('kWin').textContent=winnable;
+  $('kTop').textContent=score100(rows[0].opportunity_score); $('kTopKw').textContent=rows[0].keyword;
   $('gridHint').textContent=`${rows.length} topics · ranked by viral potential`;
   $('kpis').hidden=false;
 }

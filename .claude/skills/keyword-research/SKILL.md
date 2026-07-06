@@ -410,7 +410,8 @@ annotations, top_pin_saves, search_volume, trend_points, source_notes}`.
   values off the Pinterest Trends curve, so the dashboard can draw a sparkline. Read them
   off the graph as best you can (approximate is fine); omit if you truly can't.
 - `opportunity_score` is what the dashboard shows as the **viral-potential %** — make it
-  honest (0–100 from the rubric).
+  honest and **on a 0–100 scale** (e.g. 62, NOT 0.62 — remember the `round(100 * …)` in
+  the formula; saving a 0–1 fraction is a bug).
 - `peak_month`: the month demand peaks (e.g. "November"), or "year-round" for evergreen.
 - `publish_by`: the concrete publish-by date to catch the rise (e.g. "mid-September"),
   derived from the lead-time rule. This drives the "Publish by" badge on each card.
