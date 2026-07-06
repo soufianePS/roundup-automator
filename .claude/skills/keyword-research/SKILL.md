@@ -36,13 +36,11 @@ Two consequences to internalize:
   **Settings → Agent browser** (or run `npm run browser:login`), then continue.
 
 ## The sources of truth (best → complementary)
-1. **PinClicks** (`https://app.pinclicks.com/`) — paid, logged in. 12M+ official
-   Pinterest keywords WITH search volume, top-pin saves, position ranking, related
-   terms, per-pin score, and the only real rank tracker. The richest single source.
-   Key areas: **Keyword Explorer** (volume + save data), **Interest Explorer**
-   (related/adjacent terms — best expansion source), **top pins** view (saves + which
-   formats/roundups win), **Account Explorer** (a competitor's high-ranking keywords),
-   **Rank Tracker**. Group/sort by Popularity.
+1. **PinClicks** (`https://app.pinclicks.com/`) — paid, logged in. The richest source:
+   millions of official Pinterest keywords WITH (estimated) search volume, top-pin
+   saves, ranking accounts, and annotations. **Use ALL of it, not just volume** — see
+   the PinClicks playbook below. It is where you both find candidates AND kill the
+   high-competition ones.
 2. **Pinterest Trends** (`https://trends.pinterest.com/`) — free. Interest curve
    (0–100, up to **2 years** back), 4-keyword comparison, the trend-type leaderboard
    (Top monthly / Top yearly / **Growing** / **Seasonal**), a **crystal-ball forecast**
@@ -60,6 +58,49 @@ Two consequences to internalize:
    ties. Caveat: some practitioners now find this data partly hidden/less reliable, so
    treat it as **directional**, and cross-check with an external proxy (Google Keyword
    Planner / Keywords Everywhere, or the Google-volume × Pinterest-trend heuristic).
+
+## PinClicks playbook (use ALL of it — this is where you win)
+
+The research profile is logged in. The left nav (real URLs) is your toolbox — don't
+stop at Keyword Explorer:
+- **Keyword Explorer** (`/keyword-explorer`) — type a seed → a table of related
+  keywords each with a **Volume** cell (sortable), **Taxonomy** + **Related Interests**
+  toggles, a per-row **See Top Pins** link, bulk-select checkboxes, and **Export**.
+  This is expansion + demand. Volume is an *estimate* (directionally reliable for
+  ranking keywords against each other, NOT a literal monthly count) — say so.
+- **Top Pins** (`/pins?search=<kw>`, or the row's "See Top Pins") — **THE competition
+  view. Sort by saves.** Read the top 5–10 pins: save counts, how big the ranking
+  accounts are, and how fresh the pins are.
+- **Account Explorer** (`/accounts`) — paste a competitor account → its monthly views,
+  followers, and which keywords it ranks #1 / Top-10 / Top-25 for. Mine a *small* blog
+  that's winning your niche for keywords you'd never have guessed.
+- **Interest Explorer / Related Interests** — Pinterest's official taxonomy; match each
+  candidate to a real interest so pins align with what Pinterest wants.
+- **Rankings** (`/rankings`, "Track Rankings" button) and **Searches** (`/searches`,
+  Search Tracker — new guided-search bubbles = emerging demand) and **Saved / Saved
+  Keywords** for planning. Use them when relevant.
+- **Annotations** (per pin, one-click copy) — the interest tags Pinterest itself
+  assigned to winning pins; paste them into the title/description you save.
+
+### Judging competition in PinClicks — there is NO difficulty score, so you MUST look
+PinClicks gives no "competition" number. You infer it from **Top Pins (sorted by
+saves)**:
+- **Low saves on the top pins** = soft SERP = winnable.
+- **Small / newer accounts** holding the top spots = not locked up.
+- **Recent created dates** at the top = SERP still churns, a fresh pin can break in.
+The opposite — **high saves + big verified accounts + old pins** = locked up. **Skip it.**
+
+### HARD RULE — avoid high-competition keywords
+Do NOT save a keyword as a strong pick if its Top Pins are dominated by big accounts
+with high saves and stale dates, *even if its volume is huge*. High volume + high
+competition is a trap. Instead:
+1. Take the head term's **volume** as proof the demand exists, then
+2. go to its **long-tail expansions** (room / style / audience / budget / season
+   modifiers) and find the variant with **decent volume but a soft Top-Pins SERP**.
+3. Save THAT one, and set its `competition` sub-signal high (→ low score) for any head
+   term you keep only for reference. Prefer 3+ word phrases.
+Every saved keyword's `source_notes` must state what the Top Pins looked like (saves,
+account size, freshness) — if you didn't open Top Pins, you didn't check competition.
 
 ## Reading Pinterest Trends for ANY date (the core skill)
 
