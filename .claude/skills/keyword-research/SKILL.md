@@ -70,15 +70,18 @@ The efficient path separates cheap bulk *collection* from free *analysis*:
 2. **`pinclicks_export_seeds(["broad seed", ...])`** — if not covered, bulk-export a FEW
    broad seeds (3–8). Each export = ~1000 keywords+volumes into the local bank in one
    cheap page load. Do NOT export narrow long-tails or dozens of seeds.
-3. **`query_keyword_bank({anyOf, exclude, minVolume, maxVolume, like})`** — OFFLINE,
-   instant, free. This is your main discovery step: filter the bank for specific
-   single-topic phrasing (`anyOf:["recipe","how to","muffins"]`), drop roundups
-   (`exclude:["ideas","best","inspo"]`), and apply the new-blog volume band
-   (`minVolume:1000, maxVolume:15000`). Sort by volume. Pick ~8 candidates HERE — no
-   live looping for discovery.
-4. **`pinclicks_enrich(shortlist, {withTopPins:true, niche})`** — ONLY on those ~8 final
-   candidates, to get the real Top-Pins competition verdict. This is the one expensive
-   live step; keep it small.
+3. **`shortlist_candidates({like/anyOf, requireWedge:true, limit})`** — the ONE call to
+   pick what to check. It reads the bank, computes a cheap competition + winnability
+   PRIOR offline, drops predicted-LOCKED / bare-head / roundup / already-seen terms,
+   clusters variants to one each, and returns the top pre-ranked candidates with
+   `cheapCompetition`, `cheapWinnability`, `predict`. **Do NOT run a live check on
+   anything it marks `predict:"MAYBE"` with low `cheapWinnability`.** (Prefer this over
+   many `query_keyword_bank` calls — it saves your tokens.)
+4. **`pinclicks_enrich(topFew, {withTopPins:true, niche})`** — live Top-Pins verdict on
+   ONLY the best ~5 from step 3. **HARD BUDGET: at most ~6 live lookups and ONE pass —
+   do NOT pivot round after round.** If fewer than asked pass, return fewer (see below).
+   The app also enforces a circuit breaker (caps live visits, 24h cooldown after a
+   block), so respect a `budgetExhausted`/`blocked` result and stop.
 
 **Legacy live path** (`pinclicks_enrich` without a bank) still works but is slower — the
 bank is preferred. RULES (PinClicks is behind Cloudflare and WILL block bulk automation):

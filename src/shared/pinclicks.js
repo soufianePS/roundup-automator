@@ -23,6 +23,18 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const rand = (a, b) => a + Math.random() * (b - a);
 const KW_URL = 'https://app.pinclicks.com/keyword-explorer';
 
+// Circuit breaker — cap live PinClicks Top-Pins visits so a scan can't hammer it
+// into a Cloudflare block (both audits insisted). Process-wide, rolling hour/day.
+const LIVE = { hour: [], day: [], blockedUntil: 0, MAX_HOUR: 12, MAX_DAY: 40, COOLDOWN_MS: 24 * 3600 * 1000 };
+function liveBudgetLeft(now) {
+  if (now < LIVE.blockedUntil) return 0;
+  LIVE.hour = LIVE.hour.filter(t => now - t < 3600e3);
+  LIVE.day = LIVE.day.filter(t => now - t < 86400e3);
+  return Math.min(LIVE.MAX_HOUR - LIVE.hour.length, LIVE.MAX_DAY - LIVE.day.length);
+}
+function liveTick(now) { LIVE.hour.push(now); LIVE.day.push(now); }
+function tripBreaker(now) { LIVE.blockedUntil = now + LIVE.COOLDOWN_MS; }
+
 // Per-keyword cache. PinClicks volumes are monthly-ish, so a few days is safe — and
 // every cache hit is one fewer slow (~25s) + Cloudflare-risky live lookup.
 const CACHE_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'data', 'cache', 'pinclicks');
@@ -161,8 +173,18 @@ export async function enrichKeywords(keywords, opts = {}) {
     else toFetch.push(kw);
   }
   if (!toFetch.length) { Logger.info(`[pinclicks] all ${requested.length} keywords from cache — 0 live lookups`); return { results, blocked: false, done: true, fromCache: results.length }; }
-  Logger.info(`[pinclicks] ${results.length} cached, ${toFetch.length} to look up live`);
-  const list = toFetch;
+
+  // Circuit breaker: only Top-Pins visits count against the live budget (the risky part).
+  let list = toFetch;
+  if (withTopPins) {
+    const budget = liveBudgetLeft(Date.now());
+    if (budget <= 0) {
+      Logger.warn('[pinclicks] live budget exhausted / cooling down — returning cached only.');
+      return { results, blocked: false, done: false, budgetExhausted: true };
+    }
+    if (toFetch.length > budget) { Logger.warn(`[pinclicks] capping live lookups ${toFetch.length}→${budget} (budget)`); list = toFetch.slice(0, budget); }
+  }
+  Logger.info(`[pinclicks] ${results.length} cached, ${list.length} to look up live${withTopPins ? ' (+Top Pins)' : ''}`);
 
   const ctx = await chromium.launchPersistentContext(activeProfileDir(), {
     headless: false, viewport: null,
@@ -175,7 +197,8 @@ export async function enrichKeywords(keywords, opts = {}) {
     await page.goto(KW_URL, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
     await sleep(rand(5000, 8000));
     if (looksBlocked(await page.title(), page.url())) {
-      Logger.warn('[pinclicks] Cloudflare block detected on load — aborting. Try a fresh profile (Settings → Profiles).');
+      tripBreaker(Date.now());
+      Logger.warn('[pinclicks] Cloudflare block detected on load — breaker tripped (24h cooldown). Add a fresh profile (Settings → Profiles).');
       return { results, blocked: true, done: false };  // return any cached results we already had
     }
 
@@ -190,7 +213,7 @@ export async function enrichKeywords(keywords, opts = {}) {
       await page.keyboard.press('Enter');
       await sleep(rand(7000, 10000)); // let the Livewire table render
 
-      if (looksBlocked(await page.title(), page.url())) { blocked = true; Logger.warn(`[pinclicks] blocked after "${kw}" — stopping early.`); break; }
+      if (looksBlocked(await page.title(), page.url())) { blocked = true; tripBreaker(Date.now()); Logger.warn(`[pinclicks] blocked after "${kw}" — breaker tripped, stopping early.`); break; }
 
       const rows = await scrapeTable(page);
       const self = rows.find(r => r.keyword === kw) || rows.find(r => r.keyword.includes(kw)) || null;
@@ -201,8 +224,9 @@ export async function enrichKeywords(keywords, opts = {}) {
       };
       // optionally "go inside" → Top Pins competition read
       if (withTopPins) {
+        liveTick(Date.now());   // count this Top-Pins visit against the budget
         const tp = await topPinsFor(page, kw, { niche });
-        if (tp.blocked) { blocked = true; Logger.warn(`[pinclicks] blocked in Top Pins for "${kw}"`); results.push(rec); cachePut(kw, rec); break; }
+        if (tp.blocked) { blocked = true; tripBreaker(Date.now()); Logger.warn(`[pinclicks] blocked in Top Pins for "${kw}" — breaker tripped`); results.push(rec); cachePut(kw, rec); break; }
         rec.competition = tp.competition;
         rec.verdict = tp.verdict;
         rec.topPins = tp.signals;

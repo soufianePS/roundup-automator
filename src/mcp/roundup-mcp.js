@@ -25,6 +25,7 @@ import { probePinterestAccount } from '../shared/pinterest-probe.js';
 import { harvestTrends, fetchCurves, weeklyWindowsLastYear, INTEREST_IDS } from '../shared/trends-api.js';
 import { enrichKeywords } from '../shared/pinclicks.js';
 import { exportSeeds } from '../shared/pinclicks-export.js';
+import { buildShortlist } from '../shared/keyword-scoring.js';
 import { secretOpt } from '../config.js';
 import { Logger } from '../shared/logger.js';
 
@@ -212,6 +213,22 @@ server.tool('query_keyword_bank',
 
 server.tool('keyword_bank_status', 'How many keywords are banked + which seeds have been exported (freshness).', {},
   wrap(() => ({ total: KeywordBank.count(), seeds: KeywordBank.seeds() })));
+
+server.tool('shortlist_candidates',
+  'ONE-CALL offline shortlist (replaces multiple query_keyword_bank calls + agent filtering). Reads the keyword bank, extracts keyword shape, computes a CHEAP competition + winnability PRIOR, drops predicted-LOCKED / bare-head / roundup / already-seen terms, clusters near-duplicate variants to one canonical each, and returns the top pre-ranked candidates. USE THIS to pick which few keywords deserve a live pinclicks_enrich(withTopPins) — do NOT live-check terms it marks predict:"MAYBE" with low cheapWinnability. Saves agent tokens + live PinClicks visits.',
+  {
+    like: z.string().optional().describe('substring filter (e.g. "muffin")'),
+    anyOf: z.array(z.string()).optional().describe('keyword must contain one of these'),
+    volMin: z.number().int().optional().describe('default 800'),
+    volMax: z.number().int().optional().describe('default 35000 (new-account ceiling)'),
+    requireWedge: z.boolean().optional().describe('require an audience/format/constraint/season modifier (recommended for recipes)'),
+    limit: z.number().int().optional().describe('how many candidates to return (default 8)'),
+  },
+  wrap(({ like, anyOf, volMin, volMax, requireWedge, limit }) => {
+    const rows = KeywordBank.query({ like: like || null, anyOf: anyOf || null, minVolume: 0, limit: 1000 });
+    const exclude = new Set(KeywordScores.recentKeywords(500));   // dedup vs already-surfaced
+    return buildShortlist(rows, { exclude, volMin: volMin ?? 800, volMax: volMax ?? 35000, requireWedge: !!requireWedge, limit: limit ?? 8 });
+  }));
 
 server.tool('pinclicks_enrich',
   'HUMAN-PACED PinClicks lookup for a SMALL shortlist (real search volume + related long-tails per keyword). Drives the logged-in browser slowly and scrapes the rendered table — deliberately slow (~25s/keyword) and CAPPED so it never trips PinClicks\' Cloudflare block. Rules: (1) only pass the FINAL shortlist harvest_trends produced (≤8 keywords), never a big list; (2) needs the browser profile FREE — close the Settings login window and your own playwright browser first; (3) if it returns blocked:true, tell the user to add a fresh profile in Settings → Profiles and log in there. Returns real PinClicks volumes to feed `demand` + related terms to expand.',
