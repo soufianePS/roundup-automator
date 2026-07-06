@@ -146,18 +146,32 @@ discovery** (you don't — you just want to know what's worth writing about). Pr
 category discovery when the user gives you a broad ask ("find me topics") rather than
 a specific keyword; it surfaces ideas you wouldn't have guessed to type.
 
-### Category + date-window discovery (use this FIRST when there's no seed keyword)
-1. Go to Pinterest Trends, set **Region → United States**, then pick the **Category**
-   filter for the niche (e.g. "Food and Drinks", "Home Decor") instead of typing a seed.
-2. Set the **date window forward** — today's date out to **+30 to +90 days** (this is
-   exactly the lead-time window you'll need to publish in anyway). Browsing the
-   category filtered to that future window shows what's *about to* be in demand, not
-   just what's hot today.
-3. Scan the **Growing / Seasonal leaderboard** inside that category+window for the best
-   topics — the ones with a clear rising curve landing inside your window.
-4. Take each promising leaderboard topic as your "seed" and run it through the normal
-   workflow below (Trends detail + PinClicks). Category browsing finds candidates;
-   PinClicks + Top Pins still decides if each one is actually winnable.
+### Category + date-window discovery — USE THE FAST TOOL, not the browser
+**Call `harvest_trends` (roundup MCP) FIRST for all discovery.** It hits the Trends
+network API directly (~2 seconds, no clicking) and does the whole category+date-window
+sweep in one call: Growing + Seasonal leaderboards for your category, across weekly
+windows of LAST YEAR matching +30..+90 days from today (cyclical prediction).
+- `harvest_trends({interest: "food and drinks"})` → deduped terms with
+  normalizedCount (relative demand), wow/mom/yoy % change, seasonality score, and
+  **weeksSeen** (how many weekly windows it appeared in — persistence across weeks =
+  real recurring seasonal demand; 1 week = possible one-off).
+- Then `trend_curves({terms: [...]})` for your shortlist → exact current curve points
+  (+ crystal-ball predictions where available) — again no browser.
+- `list_trend_categories` shows valid category names.
+- **Caveat:** these tools need the research profile free. If YOUR playwright browser
+  is open, `browser_close` first. If they error anyway, fall back to browsing
+  trends.pinterest.com manually (the old way, below).
+- **Filter judgment stays yours:** prefer SPECIFIC terms ("pumpkin bread", "school
+  lunch ideas for kids") over global heads ("dinner ideas", "soup recipes" — massive
+  but unwinnable). weeksSeen ≥3 + seasonality ≥0.8 + a mom spike = prime candidates.
+
+Manual browsing fallback (only if the fast tools fail):
+1. Go to Pinterest Trends, set **Region → United States**, pick the **Category**
+   filter (e.g. "Food and Drinks", "Home Decor") instead of typing a seed.
+2. Set the **date window forward** — today +30 to +90 days.
+3. Scan the **Growing / Seasonal leaderboard** in that category+window.
+4. Take each promising topic as a "seed" for the normal workflow below. Discovery
+   finds candidates; PinClicks + Top Pins still decides if each one is winnable.
 
 When the user asks "what should we publish for [month/season/date]", do this:
 

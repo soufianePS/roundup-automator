@@ -143,6 +143,17 @@ app.post('/api/browser/close', async (req, res) => {
   try { res.json(await closeLoginSession()); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
+// ── Trends fast harvest (network API — seconds, no agent needed) ──
+app.post('/api/trends/harvest', async (req, res) => {
+  try {
+    const { harvestTrends, weeklyWindowsLastYear } = await import('./shared/trends-api.js');
+    const b = req.body || {};
+    const weeks = weeklyWindowsLastYear({ from: b.fromDays ?? 30, to: b.toDays ?? 90 });
+    const out = await harvestTrends({ interest: b.interest || null, presets: b.presets || ['growing', 'seasonal'], weeks, perCall: b.perCall ?? 25 });
+    res.json({ ...out, terms: out.terms.slice(0, b.top ?? 80) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── read-only helpers for the dashboard ──
 app.get('/api/topics', (req, res) => { try { res.json(Topics.list()); } catch (e) { res.status(500).json({ error: e.message }); } });
 // Queue a researched keyword as a topic (the dashboard "Queue" button).

@@ -1,21 +1,20 @@
+
 # Live data — local per machine, never pushed (binary/secret/changing)
-data/
-*.db
-*.db-wal
-*.db-shm
-*.sqlite
-
-# Secrets
-config/secrets.json
-.env
-
-# Runtime
-node_modules/
-*.log
-screenshots/
-output/
-.playwright-mcp/
-
 # Playwright/browser profiles — NEVER commit (passwords unrecoverable)
+# Runtime
+# Secrets
 *-profile/
+*.db
+*.db-shm
+*.db-wal
+*.log
+*.sqlite
+.env
+.playwright-mcp/
+config/secrets.json
+data/
+data/sniff/
+node_modules/
+output/
 profiles/
+screenshots/

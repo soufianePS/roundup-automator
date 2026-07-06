@@ -22,6 +22,7 @@ import { Sites, Topics, KeywordScores, Articles, ArticleItems, Pins } from '../d
 import { WordPress } from '../shared/wordpress.js';
 import { DolphinAnty } from '../shared/dolphin.js';
 import { probePinterestAccount } from '../shared/pinterest-probe.js';
+import { harvestTrends, fetchCurves, weeklyWindowsLastYear, INTEREST_IDS } from '../shared/trends-api.js';
 import { secretOpt } from '../config.js';
 import { Logger } from '../shared/logger.js';
 
@@ -156,6 +157,31 @@ server.tool('list_dolphin_profiles', 'List Dolphin Anty browser profiles (Pinter
 server.tool('probe_pinterest_account', 'Briefly launch a Dolphin profile to read its Pinterest username + boards.',
   { profileId: z.string() },
   wrap(async ({ profileId }) => probePinterestAccount(String(profileId))));
+
+// ─────────────────────────── Trends fast path (network API, no browser UI) ───────────────────────────
+server.tool('harvest_trends',
+  'FAST Pinterest Trends harvest via direct network API (~2s, no browser clicking). Pulls the Growing/Seasonal/monthly/yearly leaderboards for a category across weekly windows of LAST YEAR matching +30..+90 days from today (cyclical prediction). Returns deduped terms with normalizedCount, wow/mom/yoy change, seasonality score, and how many weekly windows each appeared in (weeksSeen — persistence = real seasonal demand, not a one-off). USE THIS FIRST for discovery instead of browsing trends.pinterest.com. NOTE: needs the research browser profile free — if your playwright browser is open, browser_close it first, or this errors.',
+  {
+    interest: z.string().optional().describe('Category name (e.g. "food and drinks", "home decor", "diy and crafts", "parenting") or raw l1 interest id. Omit for all categories.'),
+    presets: z.array(z.enum(['growing', 'seasonal', 'monthly', 'yearly'])).optional().describe('Default ["growing","seasonal"] — the two forward-looking boards.'),
+    fromDays: z.number().int().optional().describe('Forecast horizon start, days from today (default 30).'),
+    toDays: z.number().int().optional().describe('Forecast horizon end, days from today (default 90).'),
+    perCall: z.number().int().optional().describe('Terms per leaderboard call (default 25).'),
+    top: z.number().int().optional().describe('Return only the top N merged terms (default 60).'),
+  },
+  wrap(async ({ interest, presets, fromDays, toDays, perCall, top }) => {
+    const weeks = weeklyWindowsLastYear({ from: fromDays ?? 30, to: toDays ?? 90 });
+    const res = await harvestTrends({ interest: interest || null, presets: presets || ['growing', 'seasonal'], weeks, perCall: perCall ?? 25 });
+    return { ...res, terms: res.terms.slice(0, top ?? 60) };
+  }));
+
+server.tool('trend_curves',
+  'Fetch current 12-month interest curves (weekly points + crystal-ball predictions where available) for up to ~25 terms at once, via the Trends network API (~2s). Use AFTER harvest_trends to read exact curve shape/timing for your shortlist without opening the browser. Same profile-free requirement as harvest_trends.',
+  { terms: z.array(z.string()).min(1).max(50) },
+  wrap(async ({ terms }) => fetchCurves(terms)));
+
+server.tool('list_trend_categories', 'List the valid Pinterest Trends interest/category names usable with harvest_trends.', {},
+  wrap(() => Object.keys(INTEREST_IDS)));
 
 // ─────────────────────────── Data / introspection (full visibility) ───────────────────────────
 server.tool('sql_query',
