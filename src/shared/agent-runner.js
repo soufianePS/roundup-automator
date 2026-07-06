@@ -6,7 +6,7 @@
  * The prompt is written to STDIN (avoids all Windows arg-quoting issues); the
  * command line contains only fixed flags, so shell:true is safe here.
  */
-import { spawn } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import { join } from 'path';
 import { readFileSync, writeFileSync } from 'fs';
 import { Logger } from './logger.js';
@@ -80,6 +80,103 @@ const SYSTEM_BRIEFING = [
   'targets; do not reflexively question every recipe-related request.',
 ].join(' ');
 
+// ── Providers: which agent CLI drives the run (all use the SAME MCP tools) ──
+// Claude Code (validated), OpenAI Codex (validated MCP), Antigravity `agy` (adapter
+// ready; enable once installed). Each provides: how to spawn + how to parse output.
+function codexMcpArgs(cwd) {
+  const prof = activeProfileName();
+  return [
+    '-c', 'mcp_servers.roundup.command="node"',
+    '-c', 'mcp_servers.roundup.args=["src/mcp/roundup-mcp.js"]',
+    '-c', 'mcp_servers.playwright.command="node"',
+    '-c', `mcp_servers.playwright.args=["node_modules/@playwright/mcp/cli.js","--browser","chromium","--user-data-dir","data/browser-profiles/${prof}","--output-dir",".playwright-mcp","--caps","vision"]`,
+  ];
+}
+
+const PROVIDERS = {
+  claude: {
+    label: 'Claude',
+    detect: () => detectBin('claude', true),
+    // prompt via stdin; briefing via --append-system-prompt; MCP via --mcp-config file
+    spawn: (cwd, { sessionId }) => {
+      const mcpConfig = resolveMcpConfig(cwd);
+      const args = ['-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages',
+        '--permission-mode', 'dontAsk', '--allowedTools', ALLOWED_TOOLS,
+        '--mcp-config', mcpConfig, '--strict-mcp-config', '--append-system-prompt', SYSTEM_BRIEFING];
+      if (sessionId) args.push('--resume', sessionId);
+      const q = (a) => (/[\s"&|<>()^%]/.test(a) ? `"${String(a).replace(/"/g, '""')}"` : a);
+      return spawn('claude', args.map(q), { cwd, shell: true });
+    },
+    prompt: (p) => p,
+    parse: parseClaudeLine,
+  },
+  codex: {
+    label: 'Codex (ChatGPT)',
+    detect: () => detectBin('codex', true),
+    // codex.exe is a native binary → shell:false (no arg-quoting issues). No
+    // system-prompt flag, so the briefing is prepended to the prompt (stdin).
+    spawn: (cwd) => spawn('codex.exe', [
+      'exec', '--json', '--dangerously-bypass-approvals-and-sandbox', '--skip-git-repo-check',
+      '-C', cwd, ...codexMcpArgs(cwd), '-',
+    ], { cwd, shell: false }),
+    prompt: (p) => SYSTEM_BRIEFING + '\n\n---\n\n' + p,
+    parse: parseCodexLine,
+  },
+  antigravity: {
+    label: 'Antigravity (agy)',
+    detect: () => detectBin('agy', true),
+    // Adapter assumes an `agy` CLI with a non-interactive exec + MCP config, mirroring
+    // codex. Flags may need tweaking once installed — validate before relying on it.
+    spawn: (cwd, { mcpConfig }) => spawn('agy', ['exec', '--json', '--mcp-config', mcpConfig, '-'], { cwd, shell: true }),
+    prompt: (p) => SYSTEM_BRIEFING + '\n\n---\n\n' + p,
+    parse: parseCodexLine,   // best-effort; agy output format TBD
+  },
+};
+
+const _detectCache = {};
+function detectBin(bin, shell) {
+  if (bin in _detectCache) return _detectCache[bin];
+  let ok = false;
+  try { const r = spawnSync(bin, ['--version'], { shell, timeout: 5000 }); ok = r.status === 0 || !!(r.stdout && r.stdout.length); } catch { ok = false; }
+  return (_detectCache[bin] = ok);
+}
+
+export function agentProviders() {
+  return Object.entries(PROVIDERS).map(([id, p]) => ({ id, label: p.label, available: p.detect() }));
+}
+
+// ── output parsers → normalized SSE events [{type:'session'|'text'|'tool'|'result'}] ──
+function parseClaudeLine(e, run) {
+  const out = [];
+  if (e.session_id && !run.sessionId) { run.sessionId = e.session_id; out.push({ type: 'session', id: e.session_id }); }
+  if (e.type === 'stream_event') {
+    const ev = e.event || {};
+    const text = ev.delta?.text ?? (ev.type === 'content_block_delta' ? ev.delta?.text : undefined);
+    if (text) { run.streamedText = true; out.push({ type: 'text', text }); }
+    if (ev.type === 'content_block_start' && ev.content_block?.type === 'tool_use') {
+      out.push({ type: 'tool', name: ev.content_block.name, info: _toolInfo(ev.content_block.name, ev.content_block.input) });
+    }
+  } else if (e.type === 'system' && (e.subtype === 'api_retry' || e.subtype === 'rate_limit')) {
+    out.push({ type: 'tool', name: 'waiting', info: e.subtype === 'api_retry' ? `retry ${e.attempt}/${e.max_retries}` : 'rate limit' });
+  } else if (e.type === 'result') {
+    run.finalResult = e.result || run.finalResult;
+  }
+  return out;
+}
+
+function parseCodexLine(e, run) {
+  const out = [];
+  if (e.type === 'thread.started' && e.thread_id && !run.sessionId) { run.sessionId = e.thread_id; out.push({ type: 'session', id: e.thread_id }); }
+  const it = e.item;
+  if ((e.type === 'item.completed' || e.type === 'item.started') && it) {
+    if (it.type === 'agent_message' && e.type === 'item.completed' && it.text) { run.streamedText = true; out.push({ type: 'text', text: it.text }); }
+    else if (it.type === 'mcp_tool_call' && e.type === 'item.started') out.push({ type: 'tool', name: `mcp__${it.server}__${it.tool}`, info: '' });
+    else if (it.type === 'command_execution' && e.type === 'item.started') out.push({ type: 'tool', name: 'Bash', info: String(it.command || '').slice(0, 100) });
+    else if (it.type === 'file_change' && e.type === 'item.completed') out.push({ type: 'tool', name: 'Edit', info: '' });
+  }
+  return out;
+}
+
 const runs = new Map();   // runId -> { proc, events:[], listeners:Set, done, sessionId }
 let _current = null;
 
@@ -101,45 +198,28 @@ function _toolInfo(name, input) {
   return '';
 }
 
-export function startAgentRun(prompt, { sessionId = null, cwd } = {}) {
+export function startAgentRun(prompt, { sessionId = null, cwd, provider = 'claude' } = {}) {
+  const drv = PROVIDERS[provider] || PROVIDERS.claude;
+  if (!drv.detect()) throw new Error(`${drv.label} CLI is not installed / not on PATH.`);
+  const workdir = cwd || process.cwd();
   const runId = (globalThis.crypto?.randomUUID?.() || String(Date.now()));
-  const mcpConfig = resolveMcpConfig(cwd || process.cwd());
-  const args = ['-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages',
-    '--permission-mode', 'dontAsk', '--allowedTools', ALLOWED_TOOLS,
-    '--mcp-config', mcpConfig, '--strict-mcp-config',
-    '--append-system-prompt', SYSTEM_BRIEFING];
-  if (sessionId) args.push('--resume', sessionId);
-
-  // shell:true is needed on Windows (resolves claude.cmd) but does NOT auto-quote
-  // args — so quote any arg with spaces/specials (mcp path, system briefing).
-  const q = (a) => (/[\s"&|<>()^%]/.test(a) ? `"${String(a).replace(/"/g, '""')}"` : a);
-  const proc = spawn('claude', args.map(q), { cwd, shell: true });
-  const run = { proc, events: [], listeners: new Set(), done: false, sessionId: null, streamedText: false };
+  const mcpConfig = resolveMcpConfig(workdir);           // Claude/agy use the file path
+  const proc = drv.spawn(workdir, { sessionId, mcpConfig });
+  const run = { proc, events: [], listeners: new Set(), done: false, sessionId: null, streamedText: false, finalResult: '', provider };
   runs.set(runId, run);
   _current = run;
+  Logger.info(`[Agent] run ${runId} started via ${drv.label}`);
 
-  try { proc.stdin.write(prompt); proc.stdin.end(); } catch (e) { Logger.warn(`[Agent] stdin write failed: ${e.message}`); }
+  try { proc.stdin.write(drv.prompt(prompt)); proc.stdin.end(); } catch (e) { Logger.warn(`[Agent] stdin write failed: ${e.message}`); }
 
-  let buf = '', finalResult = '';
+  let buf = '';
   proc.stdout.on('data', (chunk) => {
     buf += chunk.toString();
     const lines = buf.split('\n'); buf = lines.pop();
     for (const ln of lines) {
       if (!ln.trim()) continue;
       let e; try { e = JSON.parse(ln); } catch { continue; }
-      if (e.session_id && !run.sessionId) { run.sessionId = e.session_id; _emit(run, { type: 'session', id: e.session_id }); }
-      if (e.type === 'stream_event') {
-        const ev = e.event || {};
-        const text = ev.delta?.text ?? (ev.type === 'content_block_delta' ? ev.delta?.text : undefined);
-        if (text) { run.streamedText = true; _emit(run, { type: 'text', text }); }
-        if (ev.type === 'content_block_start' && ev.content_block?.type === 'tool_use') {
-          _emit(run, { type: 'tool', name: ev.content_block.name, info: _toolInfo(ev.content_block.name, ev.content_block.input) });
-        }
-      } else if (e.type === 'system' && (e.subtype === 'api_retry' || e.subtype === 'rate_limit')) {
-        _emit(run, { type: 'tool', name: 'waiting', info: e.subtype === 'api_retry' ? `retry ${e.attempt}/${e.max_retries}` : 'rate limit' });
-      } else if (e.type === 'result') {
-        finalResult = e.result || '';
-      }
+      for (const ev of drv.parse(e, run)) _emit(run, ev);
     }
   });
 
@@ -147,16 +227,14 @@ export function startAgentRun(prompt, { sessionId = null, cwd } = {}) {
   proc.stderr.on('data', c => { stderr += c.toString(); });
 
   proc.on('close', (code) => {
-    // If nothing streamed (delta shape differed), show the final result text.
-    if (!run.streamedText && finalResult) _emit(run, { type: 'text', text: finalResult });
-    if (code !== 0 && !run.streamedText && !finalResult) _emit(run, { type: 'error', error: (stderr || `claude exited ${code}`).slice(0, 300) });
+    if (!run.streamedText && run.finalResult) _emit(run, { type: 'text', text: run.finalResult });
+    if (code !== 0 && !run.streamedText && !run.finalResult) _emit(run, { type: 'error', error: (stderr || `${drv.label} exited ${code}`).slice(0, 400) });
     _emit(run, { type: 'done', code });
     run.done = true;
-    Logger.info(`[Agent] run ${runId} finished (code ${code}, session ${run.sessionId})`);
-    // keep the run briefly so late subscribers get the buffer, then drop
+    Logger.info(`[Agent] run ${runId} finished (${drv.label}, code ${code}, session ${run.sessionId})`);
     setTimeout(() => runs.delete(runId), 60000);
   });
-  proc.on('error', (err) => { _emit(run, { type: 'error', error: err.message }); _emit(run, { type: 'done', code: -1 }); run.done = true; });
+  proc.on('error', (err) => { _emit(run, { type: 'error', error: `${drv.label}: ${err.message}` }); _emit(run, { type: 'done', code: -1 }); run.done = true; });
 
   return runId;
 }

@@ -52,6 +52,7 @@
           <option value="single-topic posts only (NOT roundups)">Single post</option>
           <option value="roundup listicles only">Roundup</option>
         </select></label>
+        <label>Engine<select id="optEngine"><option value="claude">Claude</option></select></label>
       </div>
       <div class="ask">
         <textarea id="ask" rows="1" placeholder="Optional extra detail — e.g. “focus on cozy fall baking”. The dropdowns above already set the basics.  (Enter to run)"></textarea>
@@ -351,7 +352,8 @@ async function run(){
   const prompt = buildPrompt($('ask').value.trim());
   const baseline = await currentMaxId();   // rows saved after this = this run's results
   $('stream').innerHTML=''; $('activity').classList.remove('hidden');
-  const r = await fetch('/api/agent/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt})})
+  const provider = ($('optEngine')||{}).value || 'claude';
+  const r = await fetch('/api/agent/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt, provider})})
     .then(r=>r.json()).catch(e=>({error:e.message}));
   if(!r || r.error){ say($('stream')).textContent='Error: '+((r&&r.error)||'failed to start'); return; }
   // Set the results marker NOW (not only on clean finish) so whatever the agent saves
@@ -372,6 +374,8 @@ $('ask').addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.shiftKey){ e.pre
 $('likedToggle').onclick=()=>{ likedView=!likedView; const b=$('likedToggle'); b.setAttribute('aria-pressed',likedView); b.textContent=(likedView?'♥':'♡')+' Liked'; b.classList.toggle('on',likedView); loadRadar(); };
 
 loadRadar(); loadQueue();
+// Populate the Engine dropdown with installed agent CLIs (Claude / Codex / Antigravity).
+(async ()=>{ try{ const ps=await fetch('/api/agent/providers').then(r=>r.json()); const sel=$('optEngine'); if(Array.isArray(ps)&&ps.length){ sel.innerHTML=ps.map(p=>`<option value="${p.id}"${p.available?'':' disabled'}>${p.label}${p.available?'':' (not installed)'}</option>`).join(''); const firstAvail=ps.find(p=>p.available); if(firstAvail) sel.value=firstAvail.id; } }catch{} })();
 // If a run was in progress when the page was closed/refreshed, reconnect to it.
 const _activeRun = localStorage.getItem('activeRunId');
 if(_activeRun) subscribe(_activeRun, true);

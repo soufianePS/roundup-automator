@@ -12,7 +12,7 @@ import { Sites, Topics, KeywordScores, KeywordBank } from './db/repos.js';
 import { WordPress } from './shared/wordpress.js';
 import { DolphinAnty } from './shared/dolphin.js';
 import { probePinterestAccount } from './shared/pinterest-probe.js';
-import { startAgentRun, subscribeAgentRun, stopAgentRun } from './shared/agent-runner.js';
+import { startAgentRun, subscribeAgentRun, stopAgentRun, agentProviders } from './shared/agent-runner.js';
 import { openLoginSession, closeLoginSession, isLoginSessionOpen, profileExists, DEFAULT_TABS } from './shared/research-browser.js';
 import { listProfiles, createProfile, setActiveProfile, activeProfileName } from './shared/profiles.js';
 import { secretOpt, saveSecretSection } from './config.js';
@@ -117,9 +117,10 @@ app.post('/api/pinterest/probe', async (req, res) => {
 });
 
 // ── Agent (headless Claude on the user's subscription) ──
+app.get('/api/agent/providers', (req, res) => { try { res.json(agentProviders()); } catch (e) { res.status(500).json({ error: e.message }); } });
 app.post('/api/agent/run', async (req, res) => {
   try {
-    const { prompt, sessionId } = req.body || {};
+    const { prompt, sessionId, provider } = req.body || {};
     if (!prompt || !prompt.trim()) return res.status(400).json({ error: 'prompt required' });
     // Free the research profile: only ONE chromium can hold it at a time, so if the
     // Settings login window is open the agent's browser can't launch. Close it first.
@@ -127,7 +128,7 @@ app.post('/api/agent/run', async (req, res) => {
       try { await closeLoginSession(); Logger.info('[agent] closed login window so the agent can use the browser'); }
       catch (e) { Logger.warn(`[agent] could not close login window: ${e.message}`); }
     }
-    const runId = startAgentRun(prompt, { sessionId: sessionId || null, cwd: PROJECT_ROOT });
+    const runId = startAgentRun(prompt, { sessionId: sessionId || null, cwd: PROJECT_ROOT, provider: provider || 'claude' });
     res.json({ runId });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
