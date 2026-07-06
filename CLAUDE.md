@@ -12,8 +12,19 @@ Created: 2026-07-05. Sibling of `../recipe-automator` (the recipe blog tool).
 ## 1. What this app is
 
 Automation for a **new FAMILY / HOME blog** (many categories: home decor, DIY,
-holidays, home, lifestyle…). Content format = **idea / inspiration roundups** —
-e.g. "Best 25 Home Decor Ideas", "Best 25 Small Living Room Ideas".
+holidays, home, lifestyle, **and family recipe/meal roundups** — e.g. "25 Easy
+Weeknight Dinners for Family", "20 Cozy Slow Cooker Family Meals"). Content format =
+**idea / inspiration roundups** — e.g. "Best 25 Home Decor Ideas", "Best 25 Small
+Living Room Ideas".
+
+**Settled 2026-07 — stop re-asking about this:** recipe-ROUNDUP topics (a list of many
+meal/recipe ideas, real photos + credit links, same format as every other roundup here)
+ARE in scope for this blog. This is DIFFERENT from `recipe-automator`/leagueofcooking.com,
+which publishes individual full recipe posts via its own pipeline (Google Sheets input,
+AI-generated images, Tasty Recipes plugin). The distinction that matters: recipe-roundup
+listicle for THIS blog vs. a single food-recipe SEO post for leagueofcooking — not
+"is it about food." Don't ask the user to reconfirm this every session; only ask if a
+request is genuinely ambiguous about which SITE/pipeline it targets.
 
 Give it a **keyword + title**, and it:
 1. Searches the web and **visually picks the best REAL (non-AI) images**.

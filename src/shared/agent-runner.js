@@ -45,10 +45,14 @@ const SYSTEM_BRIEFING = [
   'and add_topic have no site dependency at all, so research/score/queue freely even',
   'with zero sites set up. A site is only needed later, for wp_create_draft (actually',
   'publishing). Never block or ask the user to add a site just to do keyword research.',
-  'If a topic like "recipes" is ambiguous between a family/home recipe-roundup post',
-  '(fits THIS app fine) vs. real food-recipe SEO for the separate leagueofcooking.com',
-  'app (out of scope here), briefly ask which was meant — but that is a scope question,',
-  'not a missing-site blocker; do not conflate the two.',
+  'SETTLED, do not re-ask: recipe/meal ROUNDUP topics (e.g. "25 Easy Weeknight',
+  'Dinners") ARE in scope for THIS blog, same as any other roundup category — treat',
+  '"give me N recipes" as a normal roundup request, not an out-of-scope one. The ONLY',
+  'thing that belongs to the separate leagueofcooking.com/recipe-automator app is an',
+  'individual full recipe SEO post via its own pipeline (Sheets input, AI images, Tasty',
+  'Recipes) — that distinction is about which SITE/pipeline, not "is it about food".',
+  'Only ask a clarifying question if a request is genuinely unclear about which site it',
+  'targets; do not reflexively question every recipe-related request.',
 ].join(' ');
 
 const runs = new Map();   // runId -> { proc, events:[], listeners:Set, done, sessionId }

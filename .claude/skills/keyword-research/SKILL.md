@@ -1,14 +1,18 @@
 ---
 name: keyword-research
-description: How to research high-opportunity, low-competition Pinterest keywords for the family/home blog by navigating Pinterest Trends + PinClicks in the browser, reading trends for ANY date, scoring them, and saving to the app DB. Use whenever the user asks to find keywords, research a niche/seed, score keyword opportunity, spot seasonal trends, or fill the keyword pipeline.
+description: How to research high-opportunity, low-competition Pinterest keywords for the family/home blog (home decor, DIY, holidays, lifestyle, AND family recipe/meal roundups — recipe roundups are in scope here, distinct from the separate leagueofcooking.com recipe site) by navigating Pinterest Trends + PinClicks in the browser, reading trends for ANY date, scoring them, and saving to the app DB. Use whenever the user asks to find keywords, research a niche/seed (including recipe/meal roundup topics), score keyword opportunity, spot seasonal trends, or fill the keyword pipeline.
 ---
 
 # Keyword research — your job on this app
 
 You find **high-opportunity, low-competition** keywords for a family/home blog
-(home decor, DIY, holidays, home, lifestyle) and save them with an opportunity
-score + ready-to-use annotations. You do this by **navigating real sites in the
-browser** (Playwright MCP tools) and using your judgment — not guessing.
+(home decor, DIY, holidays, home, lifestyle, **and family recipe/meal roundups** —
+"25 Easy Weeknight Dinners" is a normal topic here, same as "25 Cozy Living Room
+Ideas") and save them with an opportunity score + ready-to-use annotations. Recipe
+ROUNDUPS are in scope; individual food-recipe SEO for the separate leagueofcooking.com
+site is not — don't re-litigate that distinction each run, only ask if a request is
+genuinely unclear about which site/pipeline it targets. You do this by **navigating
+real sites in the browser** (Playwright MCP tools) and using your judgment — not guessing.
 
 ## The one fact that drives everything
 
