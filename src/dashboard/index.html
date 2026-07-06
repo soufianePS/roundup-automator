@@ -6,8 +6,6 @@
     </div>
     <nav>
       <a class="active" href="/"><span class="ic">◧</span> Overview</a>
-      <a href="/agent"><span class="ic">✧</span> Agent</a>
-      <a href="#radar"><span class="ic">✦</span> Trend Radar</a>
       <a href="#queue"><span class="ic">☰</span> Topic Queue</a>
       <a class="soon"><span class="ic">▤</span> Articles <em>soon</em></a>
       <a class="soon"><span class="ic">◈</span> Pins &amp; Schedule <em>soon</em></a>
@@ -330,7 +328,9 @@ function subscribe(runId, reconnect){
   es = new EventSource('/api/agent/stream/'+runId);
   es.addEventListener('session', e=>{ localStorage.setItem('activeSessionId', JSON.parse(e.data).id); $('sessBadge').className='status ok'; $('sessBadge').textContent='session active'; });
   es.addEventListener('text', e=>{ say(stream).textContent += JSON.parse(e.data).text; stream.scrollTop=stream.scrollHeight; });
-  es.addEventListener('tool', e=>{ const t=JSON.parse(e.data); toolChip(stream, t.name, t.info); });
+  es.addEventListener('tool', e=>{ const t=JSON.parse(e.data); toolChip(stream, t.name, t.info);
+    // Surface results live as the agent saves them, so you can see what it's finding.
+    if(/save_keyword_score|add_topic/.test(t.name||'')){ clearTimeout(window._radarT); window._radarT=setTimeout(()=>{ if(!likedView) loadRadar(); loadQueue(); }, 1500); } });
   es.addEventListener('done', ()=>{ es.close(); setRunning(false);
     $('actStatus').className='status ok'; $('actStatus').textContent='done';
     $('sessBadge').className='status ok'; $('sessBadge').textContent='session active';
@@ -354,9 +354,12 @@ async function run(){
   const r = await fetch('/api/agent/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt})})
     .then(r=>r.json()).catch(e=>({error:e.message}));
   if(!r || r.error){ say($('stream')).textContent='Error: '+((r&&r.error)||'failed to start'); return; }
-  // Persist BEFORE streaming so a refresh mid-run can reconnect + still bucket results.
+  // Set the results marker NOW (not only on clean finish) so whatever the agent saves
+  // shows up even if the run times out / is Cloudflare-blocked mid-scan.
   localStorage.setItem('pendingBaseline', String(baseline));
+  localStorage.setItem('lastScanAfterId', String(baseline));
   localStorage.setItem('activeRunId', r.runId);
+  likedView=false;
   subscribe(r.runId, false);
 }
 async function stop(){ if(es) es.close(); await fetch('/api/agent/stop',{method:'POST'}).catch(()=>{}); setRunning(false);
