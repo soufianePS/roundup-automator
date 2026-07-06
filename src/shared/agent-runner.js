@@ -41,6 +41,14 @@ const SYSTEM_BRIEFING = [
   'by topic; follow them. Read CLAUDE.md for the full vision and decisions.',
   'Guardrails: NO AI images in article bodies — real sourced photos with a credit',
   'link only; be honest ("opportunity", never "will go viral").',
+  'IMPORTANT: keyword research does NOT require a configured site — save_keyword_score',
+  'and add_topic have no site dependency at all, so research/score/queue freely even',
+  'with zero sites set up. A site is only needed later, for wp_create_draft (actually',
+  'publishing). Never block or ask the user to add a site just to do keyword research.',
+  'If a topic like "recipes" is ambiguous between a family/home recipe-roundup post',
+  '(fits THIS app fine) vs. real food-recipe SEO for the separate leagueofcooking.com',
+  'app (out of scope here), briefly ask which was meant — but that is a scope question,',
+  'not a missing-site blocker; do not conflate the two.',
 ].join(' ');
 
 const runs = new Map();   // runId -> { proc, events:[], listeners:Set, done, sessionId }
