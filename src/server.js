@@ -177,6 +177,16 @@ app.post('/api/trends/harvest', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── PinClicks human-paced enrich (shortlist only — slow + capped) ──
+app.post('/api/pinclicks/enrich', async (req, res) => {
+  try {
+    if (isLoginSessionOpen()) await closeLoginSession();
+    const { enrichKeywords } = await import('./shared/pinclicks.js');
+    const b = req.body || {};
+    res.json(await enrichKeywords(b.keywords || [], { max: b.max ?? 8 }));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── read-only helpers for the dashboard ──
 app.get('/api/topics', (req, res) => { try { res.json(Topics.list()); } catch (e) { res.status(500).json({ error: e.message }); } });
 // Queue a researched keyword as a topic (the dashboard "Queue" button).

@@ -63,8 +63,27 @@ Two consequences to internalize:
    treat it as **directional**, and cross-check with an external proxy (Google Keyword
    Planner / Keywords Everywhere, or the Google-volume × Pinterest-trend heuristic).
 
-## PinClicks playbook (use ALL of it — this is where you win)
+## PinClicks — FAST PATH FIRST, then careful browser
+**Volume + related terms: use `pinclicks_enrich` (roundup MCP), not manual browsing.**
+It drives the logged-in browser human-paced and scrapes real PinClicks volume + related
+long-tails for a shortlist. RULES (PinClicks is behind Cloudflare and WILL block bulk
+automation — it already blocked one profile):
+- Pass **only your final shortlist** (≤8 keywords) that `harvest_trends` already narrowed
+  — NEVER a big list. Discovery happens in Trends; PinClicks just confirms volume + finds
+  long-tails for the few winners.
+- It's slow on purpose (~25s/keyword). That's the point — don't try to speed it up.
+- Needs the browser profile FREE. Close any open login window / your own playwright
+  browser first.
+- If it returns `blocked: true`: STOP hitting PinClicks and tell the user to open
+  **Settings → Agent browser → Profiles**, add a fresh profile, and log into PinClicks
+  there (a blocked profile stays blocked; a new one usually gets through).
 
+Only fall back to manually browsing app.pinclicks.com for things `pinclicks_enrich`
+can't give you — **Top Pins saves/freshness for the competition read** (the one thing
+you still must eyeball), Account Explorer, annotations. Do that browsing gently too, on
+the final 2–3 picks only.
+
+### PinClicks manual playbook (Top Pins competition read + extras)
 The research profile is logged in. The left nav (real URLs) is your toolbox — don't
 stop at Keyword Explorer:
 - **Keyword Explorer** (`/keyword-explorer`) — type a seed → a table of related

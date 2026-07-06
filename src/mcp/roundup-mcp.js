@@ -23,6 +23,7 @@ import { WordPress } from '../shared/wordpress.js';
 import { DolphinAnty } from '../shared/dolphin.js';
 import { probePinterestAccount } from '../shared/pinterest-probe.js';
 import { harvestTrends, fetchCurves, weeklyWindowsLastYear, INTEREST_IDS } from '../shared/trends-api.js';
+import { enrichKeywords } from '../shared/pinclicks.js';
 import { secretOpt } from '../config.js';
 import { Logger } from '../shared/logger.js';
 
@@ -182,6 +183,14 @@ server.tool('trend_curves',
 
 server.tool('list_trend_categories', 'List the valid Pinterest Trends interest/category names usable with harvest_trends.', {},
   wrap(() => Object.keys(INTEREST_IDS)));
+
+server.tool('pinclicks_enrich',
+  'HUMAN-PACED PinClicks lookup for a SMALL shortlist (real search volume + related long-tails per keyword). Drives the logged-in browser slowly and scrapes the rendered table — deliberately slow (~25s/keyword) and CAPPED so it never trips PinClicks\' Cloudflare block. Rules: (1) only pass the FINAL shortlist harvest_trends produced (≤8 keywords), never a big list; (2) needs the browser profile FREE — close the Settings login window and your own playwright browser first; (3) if it returns blocked:true, tell the user to add a fresh profile in Settings → Profiles and log in there. Returns real PinClicks volumes to feed `demand` + related terms to expand.',
+  {
+    keywords: z.array(z.string()).min(1).max(8),
+    max: z.number().int().optional().describe('Hard cap (default 8).'),
+  },
+  wrap(async ({ keywords, max }) => enrichKeywords(keywords, { max: max ?? 8 })));
 
 // ─────────────────────────── Data / introspection (full visibility) ───────────────────────────
 server.tool('sql_query',
