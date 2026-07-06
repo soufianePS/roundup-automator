@@ -34,6 +34,7 @@ function _migrate(db) {
   add('sites', 'wp_authors', 'TEXT');
   add('keyword_scores', 'peak_month', 'TEXT');
   add('keyword_scores', 'publish_by', 'TEXT');
+  add('keyword_scores', 'ctr_intent', 'REAL');
 }
 
 export function tables() {

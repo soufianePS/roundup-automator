@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS keyword_scores (
   keyword           TEXT NOT NULL,
   opportunity_score REAL,                      -- 0-100 composite (NOT a viral guarantee)
   demand            REAL,                      -- Pinterest Trends interest
+  ctr_intent        REAL,                      -- 0-1 will searchers CLICK vs just save
   momentum          REAL,                      -- YoY rising / breakout
   competition       REAL,                      -- lower = better (from PinClicks/heuristic)
   seasonal_timing   REAL,                      -- lead-time fit for the target month

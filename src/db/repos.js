@@ -71,10 +71,10 @@ export const Topics = {
 export const KeywordScores = {
   save(k) {
     return db().prepare(`INSERT INTO keyword_scores
-      (keyword, opportunity_score, demand, momentum, competition, seasonal_timing, fit,
+      (keyword, opportunity_score, demand, ctr_intent, momentum, competition, seasonal_timing, fit,
        title_suggestion, pin_description, hashtags, peak_month, publish_by, source_notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
-      k.keyword, k.opportunity_score ?? null, k.demand ?? null, k.momentum ?? null,
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      k.keyword, k.opportunity_score ?? null, k.demand ?? null, k.ctr_intent ?? null, k.momentum ?? null,
       k.competition ?? null, k.seasonal_timing ?? null, k.fit ?? null,
       k.title_suggestion ?? null, k.pin_description ?? null,
       Array.isArray(k.hashtags) ? k.hashtags.join(' ') : (k.hashtags ?? null),

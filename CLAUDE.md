@@ -59,6 +59,40 @@ NO AI images in the article body — real sourced photos + credit links only.
 
 ---
 
+## 2b. Pinterest strategy (cross-AI validated 2026-07 — ChatGPT + Gemini + deep-research all agreed)
+
+**Distribution engine, not just SEO.** Pinterest pushes *pins*, and a brand-new account
+gets ~zero reach on a locked SERP regardless of volume. Optimize for pins that win
+distribution + get CLICKS, not just for keywords.
+
+- **Scoring: competition GATES the score (multiply), never just adds.**
+  `score = 100 * (0.25 demand + 0.20 ctr_intent + 0.20 seasonalTiming + 0.20 momentum + 0.15 fit) * (1-competition)^1.5`
+  (see `.claude/skills/keyword-research/SKILL.md`). `ctr_intent` is a first-class signal:
+  solution/list/how-to/budget phrasing = clicks; pure aesthetic/mood terms = saves-only,
+  little traffic. `demand` = PinClicks volume as an **order-of-magnitude qualification
+  filter only** (it's from the Ads API — not literal organic counts). Trends = timing truth.
+- **Competition read from Top-10 SAVES first** (>~1000 = locked, <~100 = open), then pin
+  freshness (>12–18mo & still ranking = beatable), then pinner authority (claimed-domain
+  globe), then visual sameness. No native difficulty score exists.
+- **Timing: publish 60–90 days before the seasonal peak** (algorithm indexes + ages pins;
+  TransActV2 remembers year-over-year). Publish at peak = too late.
+- **New-account sandbox is real (3–6 months to meaningful traffic).** The pins module MUST:
+  1. **Manual warm-up days 1–5** — no domain claim, no automation; pin others' content,
+     behave human (anti-spam gate).
+  2. Then **claim domain + Rich Pins + 8–10 SPECIFIC keyworded boards** (not "Home"/"Decor").
+  3. **3–5 unique pin designs per article URL**, each a different layout/bg/hook/description.
+  4. **7–10 day gap between pins pointing to the same URL** (reused image/description =
+     spam signal → shadowban). This generalizes recipe-app's `pinGapDays`.
+- **AI-pin reach risk (Oct-2025 policy).** Detection = IPTC-metadata scan THEN pixel
+  classifier (stripping metadata is NOT enough — classifier still catches it). Impact is
+  indirect (users can hide AI content; home/decor audiences prefer authentic → lower
+  saves/clicks). **Production rule: build pins on the REAL sourced photo as the dominant
+  base + heavy graphic/text overlays (the "graphic overlap shield" breaks classifier
+  pixel patterns); no pure-AI backgrounds; light targeted edits only.** If a real photo is
+  wrongly AI-flagged, use Pinterest's "Appeal Gen AI Label" form.
+
+---
+
 ## 3. Architecture (agent-primary)
 
 ```

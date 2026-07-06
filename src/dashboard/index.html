@@ -92,6 +92,9 @@ function compChip(c){ c=norm01(c); if(c==null) return '';
 function momBadge(m){ m=norm01(m); if(m==null) return '';
   const [cls,txt] = m>=0.6 ? ['up','▲ rising'] : m>=0.35 ? ['flat','▬ steady'] : ['down','▼ cooling'];
   return `<span class="mom ${cls}">${txt}</span>`; }
+function ctrBadge(v){ v=norm01(v); if(v==null) return '';
+  const [cls,txt] = v>=0.6 ? ['good','↗ high clicks'] : v>=0.4 ? ['warn','~ some clicks'] : ['high','◡ saves only'];
+  return `<span class="chip ${cls}"><span class="d"></span>${txt}</span>`; }
 
 function card(k){
   const s = Math.max(0, Math.min(100, Math.round(k.opportunity_score ?? 0)));
@@ -108,7 +111,7 @@ function card(k){
           <div class="rc-kw">${esc(k.keyword)}</div>
         </div>
       </div>
-      <div class="rc-badges">${compChip(k.competition)}${momBadge(k.momentum)}${when?`<span class="win">${when}</span>`:''}</div>
+      <div class="rc-badges">${compChip(k.competition)}${ctrBadge(k.ctr_intent)}${momBadge(k.momentum)}${when?`<span class="win">${when}</span>`:''}</div>
       ${k.source_notes?`<div class="rc-why">${esc(k.source_notes)}</div>`:'<div class="rc-why"></div>'}
       <div class="rc-foot">
         <span class="rc-peak">${peak}</span>

@@ -83,12 +83,21 @@ stop at Keyword Explorer:
   assigned to winning pins; paste them into the title/description you save.
 
 ### Judging competition in PinClicks — there is NO difficulty score, so you MUST look
-PinClicks gives no "competition" number. You infer it from **Top Pins (sorted by
-saves)**:
-- **Low saves on the top pins** = soft SERP = winnable.
-- **Small / newer accounts** holding the top spots = not locked up.
-- **Recent created dates** at the top = SERP still churns, a fresh pin can break in.
-The opposite — **high saves + big verified accounts + old pins** = locked up. **Skip it.**
+PinClicks gives no "competition" number. Open **Top Pins, sorted by saves**, and read
+the top ~10 in this priority order (validated by cross-AI review):
+1. **Saves on the top 10 (primary signal).** Save = long-term planning intent, the
+   action Pinterest values most. **>~1,000 saves across most of the top 10 = locked
+   (competition ≈ 0.8–1.0); <~100 saves on ≥3 top spots = wide open (≈ 0.1–0.3).**
+2. **Freshness / created dates.** Top pins all **>12–18 months old and still ranking =
+   stale SERP = beatable** with a modern pin. A wall of pins <3 months old holding = hard.
+3. **Pinner authority.** A claimed-domain globe / verified blog on the top spots = serious
+   competition. Unclaimed personal profiles or image-aggregator accounts ranking = a real
+   opening for an optimized blog.
+4. **Visual sameness.** If every top pin has the same composition (e.g. all tight
+   pumpkin close-ups), a different angle (wide shot, clear text-overlay infographic)
+   can break in — and it lowers effective competition.
+Set the `competition` sub-signal mainly from #1, adjusted down by #2/#3/#4. Locked SERP
+(high saves + fresh + claimed domains) → **skip and go longer-tail.**
 
 ### HARD RULE — avoid high-competition keywords
 Do NOT save a keyword as a strong pick if its Top Pins are dominated by big accounts
@@ -172,16 +181,36 @@ real and rising.
 If a page's layout differs from the above, `browser_snapshot` / screenshot and adapt —
 reading the live page is the whole point.
 
-### 3. Score with the opportunity rubric (0–100)
-`score = 0.30*demand + 0.20*momentum + 0.25*(1 - competition) + 0.15*seasonalTiming + 0.10*fit`
-- Each sub-signal is 0–1. demand: 0–100 curve → /100, but **discount if volume
-  cross-check is weak** (relative interest on a tiny-volume term is a trap).
-  momentum: rising cluster = high, flat = mid, declining = low. competition: high=1
-  (lockout/saturated), low=0 (small blogs ranking). seasonalTiming = 1.0 if we're in
-  the 45–60-day pre-peak window (or ~25–30% up the curve) right now, tapering to ~0.2
-  if the peak already passed or is >90 days out; 0.5 for evergreen (no strong season).
-  fit: matches a site category.
-- Output an **opportunity score**, NOT a virality promise. Be honest.
+### 3. Score with the opportunity rubric (0–100) — competition is a GATE, not an add-on
+Pinterest is a **distribution engine, not just an SEO engine**: it pushes *pins*, and a
+brand-new account gets ~zero reach on a locked SERP no matter how big the volume. So
+competition must **multiply** the score down, and we must reward **click-intent**, not
+just search demand. Use this gated formula:
+
+`base = 0.25*demand + 0.20*ctr_intent + 0.20*seasonalTiming + 0.20*momentum + 0.15*fit`
+`score = round( 100 * base * (1 - competition)^1.5 )`
+
+Each sub-signal is 0–1:
+- **demand** — PinClicks volume, **long-tail biased**: treat volume as *order of
+  magnitude / a qualification filter*, not a literal count. Down-weight head terms even
+  if huge (they're where competition locks you out).
+- **ctr_intent** *(NEW — the signal we were missing)* — will searchers CLICK to the
+  blog, or just save the picture? Solution/list/how-to/problem phrasing ("small-space
+  X ideas", "DIY X", "X on a budget") = high (0.8–1.0). Pure aesthetic/mood terms
+  ("cozy fall aesthetic", "dream living room") = low (0.2–0.4): big saves, little
+  outbound traffic. Judge from the phrasing AND whether the Top-Pins SERP is
+  blog/outbound pins vs. idea-pins.
+- **seasonalTiming** — 1.0 if we're **60–90 days before the peak** right now (or
+  ~25–30% up last year's curve), declining linearly to ~0 by <30 days out; 0.5 for
+  true evergreen.
+- **momentum** — Trends 30-day curve rising (a whole related cluster rising = high).
+- **fit** — thematic coherence to a site category (Pinterest scores image↔title↔board↔
+  landing-page consistency; incoherence gets suppressed, so only keep on-theme picks).
+- **competition** — 0=open, 1=locked. Read it primarily from **Top-10 saves** (see
+  hierarchy below). The `^1.5` gate punishes high competition hard, which is correct for
+  a new account; as the account gains authority you can relax the exponent toward 1.
+
+Output an **opportunity score**, NOT a virality promise. Be honest.
 
 ### 4. Write annotations for the good ones
 - **title_suggestion**: `Number + power adjective + exact keyword + audience/benefit`,
@@ -196,8 +225,9 @@ reading the live page is the whole point.
 
 ### 5. Save
 Call `save_keyword_score` once per keyword with:
-`{keyword, opportunity_score, demand, momentum, competition, seasonal_timing, fit,
-title_suggestion, pin_description, hashtags, peak_month, publish_by, source_notes}`.
+`{keyword, opportunity_score, demand, ctr_intent, momentum, competition, seasonal_timing,
+fit, title_suggestion, pin_description, hashtags, peak_month, publish_by, source_notes}`.
+- `ctr_intent` (0–1): how likely searchers CLICK through vs. just save (see rubric).
 - `opportunity_score` is what the dashboard shows as the **viral-potential %** — make it
   honest (0–100 from the rubric).
 - `peak_month`: the month demand peaks (e.g. "November"), or "year-round" for evergreen.
