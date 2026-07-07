@@ -84,9 +84,12 @@ Workflow:
    per trend: could be 1, could be 4+. Don't artificially cap it to match N or force
    exactly one per trend; also don't blow the whole live budget on one trend if others
    still need checking. Then `smart_timing` for the real publish window.
-4. Save EVERY winnable title with `save_keyword_score`, noting which parent trend it
-   belongs to in `source_notes`. A trend with 4 good dishes contributes 4 rows; a
-   trend with 1 contributes 1; a trend with none contributes 0 (say so).
+4. Save EVERY winnable title with `save_keyword_score`, **always setting `parent_trend`**
+   to the seed it came from (e.g. "peach") — this is a real field, not just prose in
+   `source_notes`, and it's what the dashboard shows on each card so the user can see
+   which trend a keyword belongs to. A trend with 4 good dishes contributes 4 rows (all
+   sharing the same `parent_trend`); a trend with 1 contributes 1; a trend with none
+   contributes 0 (say so).
 
 ## PinClicks — BANK FIRST (offline), enrich the shortlist only
 The efficient path separates cheap bulk *collection* from free *analysis*:

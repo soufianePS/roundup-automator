@@ -211,6 +211,7 @@ select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--
 .gauge span i{font-style:normal;font-size:10px;color:var(--faint);margin-left:1px}
 .rc-head{min-width:0}
 .rc-vp{font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);margin-bottom:3px}
+.rc-vp .rc-trend{color:var(--accent-press);font-weight:700}
 .rc-title{font-weight:600;font-size:14.5px;line-height:1.28;letter-spacing:-.01em}
 .rc-kw{font-family:var(--mono);font-size:11px;color:var(--faint);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rc-badges{display:flex;flex-wrap:wrap;gap:7px;align-items:center}

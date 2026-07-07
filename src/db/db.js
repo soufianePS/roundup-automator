@@ -41,6 +41,7 @@ function _migrate(db) {
   add('keyword_scores', 'trend_points', 'TEXT');
   add('keyword_scores', 'liked', 'INTEGER DEFAULT 0');
   add('keyword_scores', 'dismissed', 'INTEGER DEFAULT 0');
+  add('keyword_scores', 'parent_trend', 'TEXT');
   add('keyword_bank', 'related_interests', 'TEXT');
 }
 

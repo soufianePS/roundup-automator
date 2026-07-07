@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS keyword_scores (
   title_suggestion  TEXT,
   pin_description   TEXT,
   hashtags          TEXT,
+  parent_trend      TEXT,                      -- the parent trend/seed this keyword was found under (e.g. "peach")
   peak_month        TEXT,                      -- when Pinterest demand peaks (e.g. "November")
   publish_by        TEXT,                      -- publish-by date to catch the rise (e.g. "mid-September")
   annotations       TEXT,                      -- PinClicks interest annotations to reuse in title/desc

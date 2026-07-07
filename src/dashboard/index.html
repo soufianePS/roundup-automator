@@ -227,7 +227,7 @@ function card(k, opts){
       <div class="rc-top">
         <div class="gauge" style="--p:${s};--gc:${scoreColor(s)}"><span>${s}<i>%</i></span></div>
         <div class="rc-head">
-          <div class="rc-vp">viral potential</div>
+          <div class="rc-vp">viral potential${k.parent_trend?` · <span class="rc-trend">trend: ${esc(k.parent_trend)}</span>`:''}</div>
           <div class="rc-title">${esc(title)}</div>
           <div class="rc-kw">${esc(k.keyword)}</div>
         </div>
@@ -324,6 +324,7 @@ function copyField(id, what){
   if(what==='tags') return copyText(tagsLines,'Tags');
   // all
   const parts=[title, '', 'Keyword: '+k.keyword];
+  if(k.parent_trend) parts.push('Trend: '+k.parent_trend);
   if(k.pin_description) parts.push('', k.pin_description);
   if(tagsArr.length) parts.push('', 'Tags:', tagsLines);
   if(k.hashtags) parts.push('', k.hashtags);
