@@ -180,6 +180,7 @@ function detail(k){
   const reachTxt = reach==null?'—':(reach>=0.4?'High':reach>=0.2?'Medium':'Low');
   const annos = (k.annotations||'').split(/[,]/).map(s=>s.trim()).filter(Boolean);
   return `<details class="rc-more"><summary>More data</summary><div class="rc-detail">
+    ${k.source_notes?`<div class="rc-why-full">${esc(k.source_notes)}</div>`:''}
     ${spark?`<div class="dl"><span>12-mo interest · relative</span><span>${spark}</span></div>`:''}
     <div class="mgrid">
       <div><span>SERP verdict</span><b>${(verdict(k.competition)||{txt:'—'}).txt}</b><i>${k.competition!=null?'comp '+pct(k.competition):'not checked'}</i></div>
@@ -214,13 +215,16 @@ function card(k, opts){
   const st = startInfo(k);
   // In the queue, the ✕ removes the TOPIC from the queue (not dismiss the keyword).
   const removeBtn = opts.topicId
-    ? `<button class="ic-btn dismiss" data-deltopic="${opts.topicId}" title="Remove from queue">✕</button>`
-    : `<button class="ic-btn dismiss" data-dismiss="${k.id}" title="Remove this topic">✕</button>`;
+    ? `<button class="ic-btn dismiss" data-deltopic="${opts.topicId}" data-tip="Remove from queue">✕</button>`
+    : `<button class="ic-btn dismiss" data-dismiss="${k.id}" data-tip="Remove this topic">✕</button>`;
+  // Short one-line preview of the reasoning on the card face (scannable in a dense
+  // grid); the FULL text lives in the "More data" panel so cards stay a uniform height.
+  const whyPreview = k.source_notes ? esc(k.source_notes).slice(0, 92) + (k.source_notes.length > 92 ? '…' : '') : '';
   return `<article class="rc" data-id="${k.id}"${opts.topicId?` data-topic="${opts.topicId}"`:''}>
     <div class="in">
       <div class="rc-actions">
-        <button class="ic-btn like ${k.liked?'on':''}" data-like="${k.id}" title="Like — save to your Liked view">${k.liked?'♥':'♡'}</button>
-        <button class="ic-btn copy" data-copytitle="${k.id}" title="Copy the title">⧉</button>
+        <button class="ic-btn like ${k.liked?'on':''}" data-like="${k.id}" data-tip="${k.liked?'Unlike':'Like — save to Liked view'}">${k.liked?'♥':'♡'}</button>
+        <button class="ic-btn copy" data-copytitle="${k.id}" data-tip="Copy title">⧉</button>
         ${removeBtn}
       </div>
       ${opts.status?`<div class="q-status"><span class="pill ${({pending:'pending',researching:'run',writing:'run',done:'done',error:'err'}[opts.status]||'pending')}">${esc(opts.status)}</span></div>`:''}
@@ -234,7 +238,7 @@ function card(k, opts){
       </div>
       <div class="rc-badges">${verdictBadge(k.competition)}${ctrBadge(k.ctr_intent)}${momBadge(k.momentum)}</div>
       ${st?`<div class="rc-start ${st.cls}">${st.ic} ${st.txt}${peak?` · ${peak}`:''}</div>`:(peak?`<div class="rc-start later">🗓 ${peak}</div>`:'')}
-      ${k.source_notes?`<div class="rc-why">${esc(k.source_notes)}</div>`:'<div class="rc-why"></div>'}
+      ${whyPreview?`<div class="rc-why">${whyPreview}</div>`:'<div class="rc-why"></div>'}
       <div class="rc-foot">
         <span class="rc-peak">${k.search_volume?fmt(k.search_volume)+' vol':''}</span>
         <button class="btn sm" data-kw="${esc(k.keyword)}" data-title="${esc(title)}">Queue <span aria-hidden="true">→</span></button>
@@ -339,7 +343,7 @@ async function dismissTopic(id){
 async function toggleLike(btn){
   const id=btn.dataset.like; const on=!btn.classList.contains('on');
   await fetch('/api/keywords/'+id+'/like',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({liked:on})}).catch(()=>{});
-  btn.classList.toggle('on',on); btn.textContent=on?'♥':'♡';
+  btn.classList.toggle('on',on); btn.textContent=on?'♥':'♡'; btn.dataset.tip=on?'Unlike':'Like — save to Liked view';
   if(likedView && !on){ const c=document.querySelector(`.rc[data-id="${id}"]`); if(c) c.remove(); }
   toast(on?'Liked':'Unliked');
 }
@@ -358,7 +362,7 @@ async function loadQueue(){
     const k = kmap[(t.keyword||'').toLowerCase()];
     if(k){ cardMap[k.id]=k; return card(k, { topicId:t.id, status:t.status }); }
     // no matching keyword row → minimal card with delete
-    return `<article class="rc" data-topic="${t.id}"><div class="in"><div class="rc-actions"><button class="ic-btn dismiss" data-deltopic="${t.id}" title="Remove from queue">✕</button></div>
+    return `<article class="rc" data-topic="${t.id}"><div class="in"><div class="rc-actions"><button class="ic-btn dismiss" data-deltopic="${t.id}" data-tip="Remove from queue">✕</button></div>
       <div class="q-status"><span class="pill ${({pending:'pending',researching:'run',writing:'run',done:'done',error:'err'}[t.status]||'pending')}">${esc(t.status||'pending')}</span></div>
       <div class="rc-head"><div class="rc-title">${esc(t.title||t.keyword)}</div><div class="rc-kw">${esc(t.keyword)}</div></div></div></article>`;
   }).join('');
