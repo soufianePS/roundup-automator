@@ -89,15 +89,16 @@
     <!-- Real topic queue -->
     <div class="card" id="queue" style="scroll-margin-top:20px"><div class="core">
       <div class="card-h"><h2>Topic Queue</h2>
-        <div style="display:flex;gap:8px;align-items:center">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <span class="hint" id="queueHint">—</span>
-          <select id="queueFilter" class="chip-btn">
-            <option value="">All statuses</option>
-            <option value="pending">Pending</option>
-            <option value="researching">Researching</option>
-            <option value="writing">Writing</option>
-            <option value="done">Done</option>
-            <option value="error">Error</option>
+          <input type="text" id="queueSearch" class="chip-btn" placeholder="Filter by trend or keyword… e.g. peach" style="min-width:200px">
+          <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--faint)">more than
+            <input type="number" id="queueMinScore" class="chip-btn" placeholder="0" min="0" max="100" style="width:58px">%
+          </label>
+          <select id="queueSort" class="chip-btn">
+            <option value="">Newest first</option>
+            <option value="desc">Viral potential: high → low</option>
+            <option value="asc">Viral potential: low → high</option>
           </select>
         </div>
       </div>
@@ -390,18 +391,36 @@ async function loadQueue(){
   let topics=[]; try{ topics = await fetch('/api/topics').then(r=>r.json()); }catch{}
   if(!Array.isArray(topics)) topics=[];
   const total = topics.length;
-  const filter = $('queueFilter').value;
-  if(filter) topics = topics.filter(t=>(t.status||'pending')===filter);
-  $('queueHint').textContent = total ? `${topics.length} of ${total} items` : '0 items';
   const body=$('queueBody');
-  if(!total){ body.innerHTML='<div class="empty" style="padding:26px;color:var(--faint)">Queue a topic from the cards above to add it to the article queue.</div>'; return; }
-  if(!topics.length){ body.innerHTML=`<div class="empty" style="padding:26px;color:var(--faint)">No topics with status "${esc(filter)}".</div>`; return; }
+  if(!total){ $('queueHint').textContent='0 items'; body.innerHTML='<div class="empty" style="padding:26px;color:var(--faint)">Queue a topic from the cards above to add it to the article queue.</div>'; return; }
   // Join each queued topic to its keyword_score row so it renders as a full card
   // (like/copy/more-data), with ✕ = remove from queue.
   let kws=[]; try{ kws = await fetch('/api/keywords?limit=400').then(r=>r.json()); }catch{}
   const kmap={}; (Array.isArray(kws)?kws:[]).forEach(k=>{ kmap[(k.keyword||'').toLowerCase()]=k; });
-  const html = topics.map(t=>{
-    const k = kmap[(t.keyword||'').toLowerCase()];
+  let rows = topics.map(t=>({ t, k: kmap[(t.keyword||'').toLowerCase()] }));
+
+  const search = $('queueSearch').value.trim().toLowerCase();
+  if(search){
+    rows = rows.filter(({t,k}) => {
+      const hay = [t.keyword, t.title, k&&k.parent_trend, k&&k.title_suggestion].filter(Boolean).join(' ').toLowerCase();
+      return hay.includes(search);
+    });
+  }
+  const minScore = Number($('queueMinScore').value);
+  if(minScore > 0){
+    rows = rows.filter(({k}) => k && score100(k.opportunity_score) > minScore);
+  }
+  const sort = $('queueSort').value;
+  if(sort){
+    rows = rows.slice().sort((a,b)=>{
+      const sa = a.k ? score100(a.k.opportunity_score) : -1, sb = b.k ? score100(b.k.opportunity_score) : -1;
+      return sort==='desc' ? sb-sa : sa-sb;
+    });
+  }
+
+  $('queueHint').textContent = `${rows.length} of ${total} items`;
+  if(!rows.length){ body.innerHTML='<div class="empty" style="padding:26px;color:var(--faint)">No topics match this filter.</div>'; return; }
+  const html = rows.map(({t,k})=>{
     if(k){ cardMap[k.id]=k; return card(k, { topicId:t.id, status:t.status }); }
     // no matching keyword row → minimal card with delete
     return `<article class="rc" data-topic="${t.id}"><div class="in"><div class="rc-actions"><button class="ic-btn dismiss" data-deltopic="${t.id}" data-tip="Remove from queue">✕</button></div>
@@ -489,7 +508,10 @@ $('runBtn').onclick=run; $('stopBtn').onclick=stop;
 $('ask').addEventListener('input',()=>{ const t=$('ask'); t.style.height='auto'; t.style.height=Math.min(t.scrollHeight,140)+'px'; });
 $('ask').addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); run(); } });
 $('likedToggle').onclick=()=>{ likedView=!likedView; const b=$('likedToggle'); b.setAttribute('aria-pressed',likedView); b.textContent=(likedView?'♥':'♡')+' Liked'; b.classList.toggle('on',likedView); loadRadar(); };
-$('queueFilter').onchange=loadQueue;
+let _queueSearchT;
+$('queueSearch').oninput=()=>{ clearTimeout(_queueSearchT); _queueSearchT=setTimeout(loadQueue,200); };
+$('queueMinScore').oninput=()=>{ clearTimeout(_queueSearchT); _queueSearchT=setTimeout(loadQueue,200); };
+$('queueSort').onchange=loadQueue;
 $('copyAllTagsBtn').onclick=copyAllTags;
 
 loadRadar(); loadQueue();
