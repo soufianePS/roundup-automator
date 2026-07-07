@@ -221,11 +221,13 @@ function card(k, opts){
   // Short one-line preview of the reasoning on the card face (scannable in a dense
   // grid); the FULL text lives in the "More data" panel so cards stay a uniform height.
   const whyPreview = k.source_notes ? esc(k.source_notes).slice(0, 92) + (k.source_notes.length > 92 ? '…' : '') : '';
+  const hasTags = (k.annotations||'').split(',').map(s=>s.trim()).filter(Boolean).length > 0;
   return `<article class="rc" data-id="${k.id}"${opts.topicId?` data-topic="${opts.topicId}"`:''}>
     <div class="in">
       <div class="rc-actions">
         <button class="ic-btn like ${k.liked?'on':''}" data-like="${k.id}" data-tip="${k.liked?'Unlike':'Like — save to Liked view'}">${k.liked?'♥':'♡'}</button>
         <button class="ic-btn copy" data-copytitle="${k.id}" data-tip="Copy title">⧉</button>
+        ${hasTags?`<button class="ic-btn copy" data-copytags="${k.id}" data-tip="Copy tags — no need to open">#</button>`:''}
         ${removeBtn}
       </div>
       ${opts.status?`<div class="q-status"><span class="pill ${({pending:'pending',researching:'run',writing:'run',done:'done',error:'err'}[opts.status]||'pending')}">${esc(opts.status)}</span></div>`:''}
