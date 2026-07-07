@@ -128,8 +128,11 @@ app.post('/api/agent/run', async (req, res) => {
       try { await closeLoginSession(); Logger.info('[agent] closed login window so the agent can use the browser'); }
       catch (e) { Logger.warn(`[agent] could not close login window: ${e.message}`); }
     }
+    // Server-clock timestamp so the dashboard can show exactly this run's results
+    // (rows saved/updated at or after this moment) — robust to dedup upserts.
+    const startedAt = getDb().prepare("SELECT datetime('now') t").get().t;
     const runId = startAgentRun(prompt, { sessionId: sessionId || null, cwd: PROJECT_ROOT, provider: provider || 'claude' });
-    res.json({ runId });
+    res.json({ runId, startedAt });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.get('/api/agent/stream/:runId', (req, res) => subscribeAgentRun(req.params.runId, res));
@@ -227,6 +230,11 @@ app.get('/api/keywords/liked', (req, res) => { try { res.json(KeywordScores.like
 // The latest research batch — powers the Trend Radar cards ("15 to work on now").
 app.get('/api/keywords/latest', (req, res) => {
   try { res.json(KeywordScores.latest(Math.min(Number(req.query.limit) || 15, 50))); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Results of the last scan (saved OR updated since its start timestamp).
+app.get('/api/keywords/since', (req, res) => {
+  try { res.json(KeywordScores.since(req.query.ts || '', 60)); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.get('/api/logs', (req, res) => res.json(Logger.getLogs()));

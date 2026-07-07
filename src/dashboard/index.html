@@ -240,14 +240,15 @@ async function loadRadar(){
     renderGrid(rows); $('gridHint').textContent=`${rows.length} liked`; return;
   }
   $('gridTitle').textContent='Topics to work on now';
-  let rows=[]; try{ rows = await fetch('/api/keywords/latest?limit=50').then(r=>r.json()); }catch{}
+  // Show the LAST run's results by timestamp (catches new + dedup-updated rows).
+  const since = localStorage.getItem('lastScanSince');
+  let rows=[];
+  if(since){ try{ rows = await fetch('/api/keywords/since?ts='+encodeURIComponent(since)).then(r=>r.json()); }catch{} }
   if(!Array.isArray(rows)) rows=[];
-  // Show only the LAST run's results (rows created after the baseline id we saved
-  // when that run started). Falls back to the newest 15 if we have no marker.
-  const afterId = Number(localStorage.getItem('lastScanAfterId')||0);
-  let shown = afterId ? rows.filter(r => r.id > afterId) : rows.slice(0,15);
-  if(afterId && !shown.length) shown = rows.slice(0,15);
-  rows = shown;
+  if(!since || !rows.length){ // no run yet, or the run saved nothing new → show recent bank
+    try{ const latest = await fetch('/api/keywords/latest?limit=15').then(r=>r.json()); if(Array.isArray(latest)) rows=latest; }catch{}
+    $('gridHint').textContent = since ? 'last scan added nothing new — showing recent topics' : '';
+  }
   if(!rows.length){ grid.innerHTML=''; $('emptyState').classList.remove('hidden'); $('kpis').hidden=true; $('gridHint').textContent=''; return; }
   $('emptyState').classList.add('hidden');
   renderGrid(rows);
@@ -338,9 +339,7 @@ function toolChip(el,name,info){ const d=document.createElement('div'); d.classN
 // When a run finishes, reveal its results (the server keeps the run buffered for
 // ~60s so a refreshed page can reconnect and replay everything below).
 function finishRun(){
-  localStorage.removeItem('activeRunId');
-  const b = localStorage.getItem('pendingBaseline');
-  if(b!=null) localStorage.setItem('lastScanAfterId', b);
+  localStorage.removeItem('activeRunId');   // lastScanSince already set at run start
   loadRadar(); loadQueue();
 }
 
@@ -379,16 +378,14 @@ function subscribe(runId, reconnect){
 async function run(){
   if(running) return;
   const prompt = buildPrompt($('ask').value.trim());
-  const baseline = await currentMaxId();   // rows saved after this = this run's results
   $('stream').innerHTML=''; $('activity').classList.remove('hidden');
   const provider = ($('optEngine')||{}).value || 'claude';
   const r = await fetch('/api/agent/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt, provider})})
     .then(r=>r.json()).catch(e=>({error:e.message}));
   if(!r || r.error){ say($('stream')).textContent='Error: '+((r&&r.error)||'failed to start'); return; }
-  // Set the results marker NOW (not only on clean finish) so whatever the agent saves
-  // shows up even if the run times out / is Cloudflare-blocked mid-scan.
-  localStorage.setItem('pendingBaseline', String(baseline));
-  localStorage.setItem('lastScanAfterId', String(baseline));
+  // Mark this run by SERVER timestamp — shows every row saved OR updated (dedup)
+  // during the run, and survives refresh/timeout.
+  if(r.startedAt) localStorage.setItem('lastScanSince', r.startedAt);
   localStorage.setItem('activeRunId', r.runId);
   likedView=false;
   subscribe(r.runId, false);

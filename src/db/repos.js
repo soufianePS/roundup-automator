@@ -122,6 +122,11 @@ export const KeywordScores = {
   latest(limit = 15) {
     return db().prepare('SELECT * FROM keyword_scores WHERE dismissed=0 ORDER BY id DESC LIMIT ?').all(limit);
   },
+  // Rows saved OR updated since a timestamp = the last run's results (upsert bumps
+  // researched_at, so this catches dedup-updated rows too — unlike an id cutoff).
+  since(tsIso, limit = 60) {
+    return db().prepare('SELECT * FROM keyword_scores WHERE dismissed=0 AND researched_at >= ? ORDER BY opportunity_score DESC LIMIT ?').all(String(tsIso || ''), limit);
+  },
   // Soft-delete: hides from the radar but keeps the record so dedup won't re-surface it.
   remove(id) { db().prepare('UPDATE keyword_scores SET dismissed=1 WHERE id=?').run(id); },
 };
