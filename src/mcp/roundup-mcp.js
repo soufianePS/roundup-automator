@@ -69,8 +69,21 @@ server.tool('set_topic_status', 'Update a topic\'s status (e.g. pending → in_p
   wrap(({ id, status }) => { Topics.setStatus(id, status); return { ok: true }; }));
 
 // ─────────────────────────── Keyword intelligence ───────────────────────────
+// Guard against skipping smart_timing: a bare ISO date ("2026-07-07") or empty
+// string is NOT a real timing verdict — smart_timing always returns prose like
+// "start now — by Jul 17, 2026" or "MISSED this cycle — queue for ~May 2027".
+// This rejects deterministically regardless of which engine/model calls the tool
+// (Claude, Codex, Gemini, ...) — observed Codex writing a bare today's-date here.
+const BARE_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+function validatePublishBy(publish_by) {
+  const v = String(publish_by || '').trim();
+  if (!v) return 'publish_by is empty. Call smart_timing(keyword, peak_month) first and use its publish_by/verdict verbatim.';
+  if (BARE_DATE_RE.test(v)) return `publish_by ("${v}") looks like a bare date, not a timing verdict — you likely skipped smart_timing. Call smart_timing(keyword, peak_month) and use its actual publish_by/verdict text (e.g. "start now — by Jul 17, 2026" or "MISSED this cycle — queue for ~May 2027").`;
+  return null;
+}
+
 server.tool('save_keyword_score',
-  'Save a researched keyword with its opportunity score, sub-signals and annotations (the training data).',
+  'Save a researched keyword with its opportunity score, sub-signals and annotations (the training data). REQUIRES publish_by to be the real verdict text from smart_timing (not a bare date) — call smart_timing(keyword, peak_month) first.',
   {
     keyword: z.string(),
     opportunity_score: z.number().optional(),
@@ -91,7 +104,11 @@ server.tool('save_keyword_score',
     trend_points: z.array(z.number()).optional(),
     source_notes: z.string().optional(),
   },
-  wrap((k) => ({ id: KeywordScores.save(k) })));
+  wrap((k) => {
+    const err = validatePublishBy(k.publish_by);
+    if (err) throw new Error(err);
+    return { id: KeywordScores.save(k) };
+  }));
 
 server.tool('list_keyword_scores', 'Top researched keywords by opportunity score.',
   { limit: z.number().int().optional() },
