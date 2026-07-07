@@ -78,6 +78,7 @@
       <h2 style="font-size:15px;margin:0" id="gridTitle">Topics to work on now</h2>
       <div style="display:flex;gap:8px;align-items:center">
         <span class="hint" id="gridHint">ranked by viral potential</span>
+        <button class="chip-btn" id="copyAllTagsBtn" data-tip="Every tag from every card below, no need to open each one">⧉ Copy all tags</button>
         <button class="chip-btn" id="likedToggle" aria-pressed="false">♡ Liked</button>
       </div>
     </div>
@@ -319,6 +320,30 @@ async function copyText(str, label){
     try{ document.execCommand('copy'); toast(label+' copied'); }catch{ toast('Copy failed'); } ta.remove();
   }
 }
+// Copy every tag from every card CURRENTLY on screen (whatever view/order is
+// showing) — no need to open each card's "More data" one by one. Grouped by
+// topic so it's clear which tags go with which title, plus a deduped flat
+// list at the end for a quick paste-everywhere bank.
+function copyAllTags(){
+  const ids = [...document.querySelectorAll('#grid .rc[data-id]')].map(el=>el.dataset.id);
+  const blocks = [], allTags = new Set();
+  for (const id of ids) {
+    const k = cardMap[id]; if (!k) continue;
+    const raw = k.annotations||'';
+    // Some older rows accidentally saved prose (source_notes) into annotations
+    // instead of a short tag list — skip those instead of shredding a sentence
+    // into fake "tags" on every comma.
+    if (raw.length > 200 || /PinClicks|smart_timing|Dedup checked|recent_keywords|verdict:/i.test(raw)) continue;
+    const tags = raw.split(',').map(s=>s.trim()).filter(t=>t && t.length<=60);
+    if (!tags.length) continue;
+    tags.forEach(t=>allTags.add(t));
+    blocks.push(`${k.title_suggestion || k.keyword}\n${tags.join('\n')}`);
+  }
+  if (!blocks.length) { toast('No tags on the cards shown'); return; }
+  const flat = [...allTags].join('\n');
+  copyText(`${blocks.join('\n\n')}\n\n---\nAll unique tags (${allTags.size}):\n${flat}`, `Tags from ${blocks.length} card${blocks.length>1?'s':''}`);
+}
+
 function copyField(id, what){
   const k=cardMap[id]; if(!k) return;
   const title=k.title_suggestion||k.keyword;
@@ -447,6 +472,7 @@ $('runBtn').onclick=run; $('stopBtn').onclick=stop;
 $('ask').addEventListener('input',()=>{ const t=$('ask'); t.style.height='auto'; t.style.height=Math.min(t.scrollHeight,140)+'px'; });
 $('ask').addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); run(); } });
 $('likedToggle').onclick=()=>{ likedView=!likedView; const b=$('likedToggle'); b.setAttribute('aria-pressed',likedView); b.textContent=(likedView?'♥':'♡')+' Liked'; b.classList.toggle('on',likedView); loadRadar(); };
+$('copyAllTagsBtn').onclick=copyAllTags;
 
 loadRadar(); loadQueue();
 // Populate the Engine dropdown with installed agent CLIs (Claude / Codex / Antigravity).
