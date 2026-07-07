@@ -109,21 +109,32 @@ function buildPrompt(userText){
   const cat = $('optCat').value;
   const fmt = $('optFmt').value;
   const extra = (userText && userText.trim()) ? `Extra detail: ${userText.trim()}.` : '';
-  return `Find me ${count} DISTINCT ${cat ? cat + ' ' : ''}TRENDS to work on — NOT ${count} random keywords. I plan to publish ${when}. Format: ${fmt}. ${extra}
+  return `Explore ${count} DISTINCT ${cat ? cat + ' ' : ''}TRENDS. I plan to publish ${when}. Format: ${fmt}. ${extra}
 
 STRUCTURE (this is the actual request — follow it literally):
-1. Use harvest_trends (+ the keyword bank) to identify ${count} genuinely DISTINCT rising parent trends (different topics/ingredients/themes, not variations of the same one).
-2. For EACH of those ${count} trends: call trend_titles(seed, {niche:'food'}) to pull several candidate dish/title options under that ONE trend, then live-check (pinclicks_enrich withTopPins) the best 1-2 candidates from it.
-3. Save the best WINNABLE (or best available) title FROM EACH trend — aim for ${count} results, one clearly tied to each trend, not ${count} keywords all pulled from one pool.
+${count} is the number of TRENDS to explore, NOT the number of keywords to output.
+Each trend can produce a DIFFERENT number of good keywords — 1, 2, 3, 4 or more — so
+my total output will vary and is very likely MORE than ${count}. Do not cap the total
+at ${count}; do not force exactly one keyword per trend.
+
+1. Use harvest_trends (+ the keyword bank) to identify ${count} genuinely DISTINCT
+   rising parent trends (different topics/ingredients/themes, not variations of one).
+2. For EACH of those ${count} trends: call trend_titles(seed, {niche:'food'}) to pull
+   several candidate dish/title options under that ONE trend, then live-check
+   (pinclicks_enrich withTopPins) enough of them to find ALL the genuinely winnable
+   ones under that trend — could be just 1, could be 4.
+3. Save EVERY winnable title you find, from every trend. A trend that has 4 winnable
+   dishes should contribute all 4, not be capped to 1. A trend with none should
+   contribute 0 and you say so.
 
 CRITICAL rules:
 1. DEDUP — call recent_keywords first and DO NOT re-suggest any trend already surfaced before.
 2. NEVER SILENTLY DROP A WINNABLE FIND — if a candidate you live-checked comes back WINNABLE, you MUST either save it or explicitly tell me why you chose not to (e.g. "redundant with #2"). Do not just omit it from the summary with no trace.
-3. WORTH-IT ONLY — if fewer than ${count} trends truly have a worth-it title, return fewer and say which trend(s) you dropped and why. Never pad with weak picks.
+3. WORTH-IT ONLY, don't pad — but also don't artificially shrink a trend's results to hit a number. If a trend only has 1 good keyword, give 1; if it has 4, give all 4.
 4. TIMING — I'm publishing ${when}; use smart_timing(keyword, peak_month) for every save (never hand-write publish_by), and prefer trends whose window fits ${when}.
 5. Honor the Format above (single-topic vs roundup) using the SERP, not just phrasing.
 
-Save each kept topic with save_keyword_score (opportunity_score 0-100, ctr_intent, competition, momentum, seasonal_timing, peak_month, publish_by, title_suggestion, pin_description, annotations, top_pin_saves, search_volume, trend_points). End with a table grouped BY TREND showing what you saved (or dropped) for each.`;
+Save each kept topic with save_keyword_score (opportunity_score 0-100, ctr_intent, competition, momentum, seasonal_timing, peak_month, publish_by, title_suggestion, pin_description, annotations, top_pin_saves, search_volume, trend_points). End with a table grouped BY TREND, showing all keywords saved under each (and any dropped, with why).`;
 }
 
 // month name for the eyebrow
