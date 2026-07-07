@@ -6,7 +6,6 @@
     </div>
     <nav>
       <a class="active" href="/"><span class="ic">◧</span> Overview</a>
-      <a href="#queue"><span class="ic">☰</span> Topic Queue</a>
       <a class="soon"><span class="ic">▤</span> Articles <em>soon</em></a>
       <a class="soon"><span class="ic">◈</span> Pins &amp; Schedule <em>soon</em></a>
       <a href="/settings"><span class="ic">⚙</span> Settings</a>
@@ -89,7 +88,19 @@
 
     <!-- Real topic queue -->
     <div class="card" id="queue" style="scroll-margin-top:20px"><div class="core">
-      <div class="card-h"><h2>Topic Queue</h2><span class="hint" id="queueHint">—</span></div>
+      <div class="card-h"><h2>Topic Queue</h2>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span class="hint" id="queueHint">—</span>
+          <select id="queueFilter" class="chip-btn">
+            <option value="">All statuses</option>
+            <option value="pending">Pending</option>
+            <option value="researching">Researching</option>
+            <option value="writing">Writing</option>
+            <option value="done">Done</option>
+            <option value="error">Error</option>
+          </select>
+        </div>
+      </div>
       <div id="queueBody"><div class="empty" style="padding:26px;color:var(--faint)">Queue a topic from the cards above to add it to the article queue.</div></div>
     </div></div>
 
@@ -378,9 +389,13 @@ async function toggleLike(btn){
 async function loadQueue(){
   let topics=[]; try{ topics = await fetch('/api/topics').then(r=>r.json()); }catch{}
   if(!Array.isArray(topics)) topics=[];
-  $('queueHint').textContent = topics.length ? `${topics.length} items` : '0 items';
+  const total = topics.length;
+  const filter = $('queueFilter').value;
+  if(filter) topics = topics.filter(t=>(t.status||'pending')===filter);
+  $('queueHint').textContent = total ? `${topics.length} of ${total} items` : '0 items';
   const body=$('queueBody');
-  if(!topics.length){ body.innerHTML='<div class="empty" style="padding:26px;color:var(--faint)">Queue a topic from the cards above to add it to the article queue.</div>'; return; }
+  if(!total){ body.innerHTML='<div class="empty" style="padding:26px;color:var(--faint)">Queue a topic from the cards above to add it to the article queue.</div>'; return; }
+  if(!topics.length){ body.innerHTML=`<div class="empty" style="padding:26px;color:var(--faint)">No topics with status "${esc(filter)}".</div>`; return; }
   // Join each queued topic to its keyword_score row so it renders as a full card
   // (like/copy/more-data), with ✕ = remove from queue.
   let kws=[]; try{ kws = await fetch('/api/keywords?limit=400').then(r=>r.json()); }catch{}
@@ -474,6 +489,7 @@ $('runBtn').onclick=run; $('stopBtn').onclick=stop;
 $('ask').addEventListener('input',()=>{ const t=$('ask'); t.style.height='auto'; t.style.height=Math.min(t.scrollHeight,140)+'px'; });
 $('ask').addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); run(); } });
 $('likedToggle').onclick=()=>{ likedView=!likedView; const b=$('likedToggle'); b.setAttribute('aria-pressed',likedView); b.textContent=(likedView?'♥':'♡')+' Liked'; b.classList.toggle('on',likedView); loadRadar(); };
+$('queueFilter').onchange=loadQueue;
 $('copyAllTagsBtn').onclick=copyAllTags;
 
 loadRadar(); loadQueue();
