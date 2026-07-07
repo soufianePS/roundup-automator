@@ -191,18 +191,24 @@ function startInfo(k){
   else cls='later';
   return { cls, ic, txt:'Start '+esc(k.publish_by) };
 }
-function card(k){
+function card(k, opts){
+  opts = opts || {};
   const s = score100(k.opportunity_score);
   const title = k.title_suggestion || k.keyword;
   const peak = k.peak_month ? `peaks ${esc(k.peak_month)}` : '';
   const st = startInfo(k);
-  return `<article class="rc" data-id="${k.id}">
+  // In the queue, the ✕ removes the TOPIC from the queue (not dismiss the keyword).
+  const removeBtn = opts.topicId
+    ? `<button class="ic-btn dismiss" data-deltopic="${opts.topicId}" title="Remove from queue">✕</button>`
+    : `<button class="ic-btn dismiss" data-dismiss="${k.id}" title="Remove this topic">✕</button>`;
+  return `<article class="rc" data-id="${k.id}"${opts.topicId?` data-topic="${opts.topicId}"`:''}>
     <div class="in">
       <div class="rc-actions">
         <button class="ic-btn like ${k.liked?'on':''}" data-like="${k.id}" title="Like — save to your Liked view">${k.liked?'♥':'♡'}</button>
         <button class="ic-btn copy" data-copytitle="${k.id}" title="Copy the title">⧉</button>
-        <button class="ic-btn dismiss" data-dismiss="${k.id}" title="Remove this topic">✕</button>
+        ${removeBtn}
       </div>
+      ${opts.status?`<div class="q-status"><span class="pill ${({pending:'pending',researching:'run',writing:'run',done:'done',error:'err'}[opts.status]||'pending')}">${esc(opts.status)}</span></div>`:''}
       <div class="rc-top">
         <div class="gauge" style="--p:${s};--gc:${scoreColor(s)}"><span>${s}<i>%</i></span></div>
         <div class="rc-head">
@@ -267,13 +273,24 @@ function renderGrid(rows){
   const grid=$('grid');
   rows.sort((a,b)=>score100(b.opportunity_score)-score100(a.opportunity_score));
   cardMap = {}; rows.forEach(r=>{ cardMap[r.id]=r; });
-  grid.innerHTML = rows.map(card).join('');
-  grid.querySelectorAll('button[data-kw]').forEach(b=> b.onclick=()=>queueTopic(b));
-  grid.querySelectorAll('[data-dismiss]').forEach(b=> b.onclick=()=>dismissTopic(b.dataset.dismiss));
-  grid.querySelectorAll('[data-like]').forEach(b=> b.onclick=()=>toggleLike(b));
-  grid.querySelectorAll('[data-copytitle]').forEach(b=> b.onclick=()=>copyField(b.dataset.copytitle,'title'));
-  grid.querySelectorAll('[data-copytags]').forEach(b=> b.onclick=()=>copyField(b.dataset.copytags,'tags'));
-  grid.querySelectorAll('[data-copyall]').forEach(b=> b.onclick=()=>copyField(b.dataset.copyall,'all'));
+  grid.innerHTML = rows.map(r=>card(r)).join('');
+  wireCards(grid);
+}
+
+// Wire all card buttons within a container (used by both the radar and the queue).
+function wireCards(scope){
+  scope.querySelectorAll('button[data-kw]').forEach(b=> b.onclick=()=>queueTopic(b));
+  scope.querySelectorAll('[data-dismiss]').forEach(b=> b.onclick=()=>dismissTopic(b.dataset.dismiss));
+  scope.querySelectorAll('[data-deltopic]').forEach(b=> b.onclick=()=>delTopic(b.dataset.deltopic));
+  scope.querySelectorAll('[data-like]').forEach(b=> b.onclick=()=>toggleLike(b));
+  scope.querySelectorAll('[data-copytitle]').forEach(b=> b.onclick=()=>copyField(b.dataset.copytitle,'title'));
+  scope.querySelectorAll('[data-copytags]').forEach(b=> b.onclick=()=>copyField(b.dataset.copytags,'tags'));
+  scope.querySelectorAll('[data-copyall]').forEach(b=> b.onclick=()=>copyField(b.dataset.copyall,'all'));
+}
+async function delTopic(id){
+  const el=document.querySelector(`.rc[data-topic="${id}"]`);
+  await fetch('/api/topics/'+id,{method:'DELETE'}).catch(()=>{});
+  if(el) el.remove(); toast('Removed from queue'); loadQueue();
 }
 
 async function copyText(str, label){
@@ -312,13 +329,25 @@ async function toggleLike(btn){
 }
 
 async function loadQueue(){
-  let rows=[]; try{ rows = await fetch('/api/topics').then(r=>r.json()); }catch{}
-  if(!Array.isArray(rows)) rows=[];
-  $('queueHint').textContent = rows.length ? `${rows.length} items` : '0 items';
+  let topics=[]; try{ topics = await fetch('/api/topics').then(r=>r.json()); }catch{}
+  if(!Array.isArray(topics)) topics=[];
+  $('queueHint').textContent = topics.length ? `${topics.length} items` : '0 items';
   const body=$('queueBody');
-  if(!rows.length){ body.innerHTML='<div class="empty" style="padding:26px;color:var(--faint)">Queue a topic from the cards above to add it to the article queue.</div>'; return; }
-  const pill = st => ({pending:'pending',researching:'run',writing:'run',done:'done',error:'err'}[st]||'pending');
-  body.innerHTML = rows.slice(0,12).map(t=>`<div class="row"><div class="t">${esc(t.title||t.keyword)}<small>${esc(t.type||'roundup')} · ${esc(t.keyword)}</small></div><span class="pill ${pill(t.status)}">${esc(t.status||'pending')}</span></div>`).join('');
+  if(!topics.length){ body.innerHTML='<div class="empty" style="padding:26px;color:var(--faint)">Queue a topic from the cards above to add it to the article queue.</div>'; return; }
+  // Join each queued topic to its keyword_score row so it renders as a full card
+  // (like/copy/more-data), with ✕ = remove from queue.
+  let kws=[]; try{ kws = await fetch('/api/keywords?limit=400').then(r=>r.json()); }catch{}
+  const kmap={}; (Array.isArray(kws)?kws:[]).forEach(k=>{ kmap[(k.keyword||'').toLowerCase()]=k; });
+  const html = topics.map(t=>{
+    const k = kmap[(t.keyword||'').toLowerCase()];
+    if(k){ cardMap[k.id]=k; return card(k, { topicId:t.id, status:t.status }); }
+    // no matching keyword row → minimal card with delete
+    return `<article class="rc" data-topic="${t.id}"><div class="in"><div class="rc-actions"><button class="ic-btn dismiss" data-deltopic="${t.id}" title="Remove from queue">✕</button></div>
+      <div class="q-status"><span class="pill ${({pending:'pending',researching:'run',writing:'run',done:'done',error:'err'}[t.status]||'pending')}">${esc(t.status||'pending')}</span></div>
+      <div class="rc-head"><div class="rc-title">${esc(t.title||t.keyword)}</div><div class="rc-kw">${esc(t.keyword)}</div></div></div></article>`;
+  }).join('');
+  body.innerHTML = `<div class="radar-grid" style="padding:14px">${html}</div>`;
+  wireCards(body);
 }
 
 async function queueTopic(btn){

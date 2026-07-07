@@ -66,6 +66,7 @@ export const Topics = {
   setStatus(id, status) {
     db().prepare("UPDATE topics SET status=?, updated_at=datetime('now') WHERE id=?").run(status, id);
   },
+  remove(id) { db().prepare('DELETE FROM topics WHERE id=?').run(id); },
 };
 
 export const KeywordScores = {

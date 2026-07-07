@@ -220,7 +220,9 @@ app.post('/api/topics', (req, res) => {
     res.json({ ok: true, id: Topics.add(keyword.trim(), title || null, type || 'roundup', priority || 0) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.get('/api/keywords', (req, res) => { try { res.json(KeywordScores.top(50)); } catch (e) { res.status(500).json({ error: e.message }); } });
+app.get('/api/keywords', (req, res) => { try { res.json(KeywordScores.top(Math.min(Number(req.query.limit) || 50, 500))); } catch (e) { res.status(500).json({ error: e.message }); } });
+// Remove a queued topic.
+app.delete('/api/topics/:id', (req, res) => { try { Topics.remove(Number(req.params.id)); res.json({ ok: true }); } catch (e) { res.status(500).json({ error: e.message }); } });
 // Dismiss a topic from the Trend Radar (soft-delete — kept for dedup).
 app.delete('/api/keywords/:id', (req, res) => { try { KeywordScores.remove(Number(req.params.id)); res.json({ ok: true }); } catch (e) { res.status(500).json({ error: e.message }); } });
 // Like / unlike a topic.
