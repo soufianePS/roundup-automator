@@ -134,15 +134,16 @@ export const KeywordScores = {
 
 export const KeywordBank = {
   upsertMany(rows, seed) {
-    const stmt = db().prepare(`INSERT INTO keyword_bank (keyword, volume, url, taxonomy, source_seed)
-      VALUES (?, ?, ?, ?, ?)
+    const stmt = db().prepare(`INSERT INTO keyword_bank (keyword, volume, url, taxonomy, related_interests, source_seed)
+      VALUES (?, ?, ?, ?, ?, ?)
       ON CONFLICT(keyword) DO UPDATE SET volume=excluded.volume, url=excluded.url,
-        taxonomy=excluded.taxonomy, source_seed=excluded.source_seed, exported_at=datetime('now')`);
+        taxonomy=excluded.taxonomy, related_interests=excluded.related_interests,
+        source_seed=excluded.source_seed, exported_at=datetime('now')`);
     let n = 0;
     for (const r of rows) {
       const kw = String(r.keyword || '').trim().toLowerCase();
       if (!kw) continue;
-      stmt.run(kw, r.volume ?? null, r.url ?? null, r.taxonomy ?? null, seed ?? null);
+      stmt.run(kw, r.volume ?? null, r.url ?? null, r.taxonomy ?? null, r.relatedInterests ?? null, seed ?? null);
       n++;
     }
     return n;
@@ -160,7 +161,7 @@ export const KeywordBank = {
     if (Array.isArray(exclude)) exclude.forEach(t => { where.push('keyword NOT LIKE ?'); args.push('%' + String(t).toLowerCase() + '%'); });
     const order = sort === 'keyword' ? 'keyword ASC' : 'volume DESC';
     args.push(Math.min(limit || 200, 1000));
-    return db().prepare(`SELECT keyword, volume, url, taxonomy, source_seed FROM keyword_bank WHERE ${where.join(' AND ')} ORDER BY ${order} LIMIT ?`).all(...args);
+    return db().prepare(`SELECT keyword, volume, url, taxonomy, related_interests, source_seed FROM keyword_bank WHERE ${where.join(' AND ')} ORDER BY ${order} LIMIT ?`).all(...args);
   },
   seeds() { return db().prepare("SELECT source_seed seed, COUNT(*) n, MAX(exported_at) last FROM keyword_bank GROUP BY source_seed ORDER BY last DESC").all(); },
 };

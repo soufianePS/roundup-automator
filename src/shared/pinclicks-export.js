@@ -43,7 +43,14 @@ function parseCSV(text) {
   return rows;
 }
 
-/** Parse a PinClicks keyword-explorer export → [{keyword, volume, url, taxonomy}]. */
+// "Related Interests" cells look like "lawn and garden (https://...)\npumpkin
+// carving inspiration (https://...)\n..." — one "name (url)" per line. Keep just names.
+function parseRelatedInterests(cell) {
+  if (!cell) return '';
+  return String(cell).split('\n').map(l => l.split('(')[0].trim()).filter(Boolean).slice(0, 8).join(', ');
+}
+
+/** Parse a PinClicks keyword-explorer export → [{keyword, volume, url, taxonomy, relatedInterests}]. */
 function parseExport(csvText) {
   const rows = parseCSV(csvText);
   if (!rows.length) return [];
@@ -52,13 +59,18 @@ function parseExport(csvText) {
   const iVol = head.findIndex(h => h.includes('search volume') || h === 'volume');
   const iUrl = head.indexOf('url');
   const iTax = head.indexOf('taxonomy');
+  const iRel = head.findIndex(h => h.includes('related interest'));
   const out = [];
   for (let r = 1; r < rows.length; r++) {
     const row = rows[r];
     const kw = (row[iLabel] || '').trim();
     if (!kw) continue;
     const vol = parseInt(String(row[iVol] || '').replace(/[^0-9]/g, ''), 10);
-    out.push({ keyword: kw, volume: Number.isFinite(vol) ? vol : null, url: (row[iUrl] || '').trim(), taxonomy: (row[iTax] || '').split('(')[0].trim() });
+    out.push({
+      keyword: kw, volume: Number.isFinite(vol) ? vol : null, url: (row[iUrl] || '').trim(),
+      taxonomy: (row[iTax] || '').split('(')[0].trim(),
+      relatedInterests: iRel >= 0 ? parseRelatedInterests(row[iRel]) : '',
+    });
   }
   return out;
 }

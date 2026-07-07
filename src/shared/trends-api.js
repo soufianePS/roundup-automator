@@ -168,6 +168,88 @@ export async function harvestTrends(opts = {}) {
  * Fetch current interest curves (+ predictions where available) for up to ~25 terms.
  * Returns [{term, counts:[{date, normalizedCount, predicted…}], growth_rates, has_prediction}]
  */
+/**
+ * Pinterest's OWN named-moment calendar — REAL takeoff (lift-off) + peak dates +
+ * plateau width, straight from their API (/ads/v4/trends/moment/available/<country>).
+ * This replaces guessing: peak_length_in_days <=45 = sharp spike (Halloween-fast),
+ * >=90 = wide hump (slow produce/recipe-style), else medium. Cached 24h (moves rarely).
+ */
+export async function fetchMoments({ country = 'US' } = {}) {
+  const key = `moments-${country}`;
+  const hit = cacheGet(key, 24 * 3600 * 1000);
+  if (hit) return { ...hit.data, cached: true };
+  // ApiResource/get needs a loaded page (in-page fetch inherits cookies + the
+  // x-pinterest-*/x-b3-* headers its own frontend sends) — a bare ctx.request 403s.
+  const ctx = await chromium.launchPersistentContext(activeProfileDir(), { headless: true });
+  try {
+    const page = ctx.pages()[0] || await ctx.newPage();
+    await page.goto(`${BASE}/?country=${country}`, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
+    const rnd = () => [...Array(16)].map(() => Math.floor(Math.random() * 16).toString(16)).join('');
+    const j = await page.evaluate(async ({ base, country, traceId, spanId }) => {
+      const dataParam = JSON.stringify({ options: { url: `/ads/v4/trends/moment/available/${country}`, data: {} }, context: {} });
+      const url = `${base}/resource/ApiResource/get/?source_url=%2F%3Fcountry%3D${country}&data=${encodeURIComponent(dataParam)}`;
+      const r = await fetch(url, { headers: {
+        'x-requested-with': 'XMLHttpRequest', accept: 'application/json, text/javascript, */*, q=0.01',
+        'x-pinterest-source-url': `/?country=${country}`, 'x-pinterest-appstate': 'active', 'x-pinterest-pws-handler': 'trends/index.js',
+        'x-b3-traceid': traceId, 'x-b3-spanid': spanId, 'x-b3-flags': '0',
+      } });
+      if (r.status !== 200) throw new Error(`moments fetch ${r.status}`);
+      return r.json();
+    }, { base: BASE, country, traceId: rnd(), spanId: rnd().slice(0, 16) });
+    const d = j?.resource_response?.data || {};
+    // Pinterest's own moment calendar can lag a full cycle behind (observed: it
+    // returned Halloween's peak as ~9 months in the PAST). Moments are annual, so if
+    // a peak is already behind "now", roll both dates forward by exactly 1 year.
+    const YEAR_MS = 365 * 86400000;
+    const nowMs = Date.now();
+    const moments = (d.moments || []).map((name, i) => {
+      const p = (d.peaks || [])[i] || {};
+      let peak = p.peak_timestamp_millis ? Number(p.peak_timestamp_millis) : null;
+      let takeoff = p.takeoff_timestamp_millis ? Number(p.takeoff_timestamp_millis) : null;
+      let rolled = false;
+      if (peak != null && peak < nowMs) { peak += YEAR_MS; if (takeoff != null) takeoff += YEAR_MS; rolled = true; }
+      const plateauDays = p.peak_length_in_days ?? null;
+      const shape = plateauDays == null ? null : plateauDays <= 45 ? 'spike' : plateauDays >= 90 ? 'hump' : 'medium';
+      return {
+        name, peakDate: peak ? new Date(peak).toISOString().slice(0, 10) : null,
+        takeoffDate: takeoff ? new Date(takeoff).toISOString().slice(0, 10) : null,
+        plateauDays, shape, rolledForward: rolled,
+        liftOffToPeakDays: (peak && takeoff) ? Math.round((peak - takeoff) / 86400000) : null,
+      };
+    });
+    const out = { moments, country };
+    cachePut(key, out);
+    return { ...out, cached: false };
+  } finally { await ctx.close(); }
+}
+
+// Loose keyword→named-moment matcher so arbitrary keywords ("peach cobbler") can
+// borrow real timing from the closest official moment ("summer").
+// ONLY genuine holiday/moment keywords match here — NOT general produce/recipe words
+// (peach, zucchini, etc.). Pinterest's "summer" moment peaks in early June (a
+// solstice/planning spike), which does NOT represent July-August produce-recipe
+// seasonality — matching those to "summer" gave a worse answer than the plain
+// peak-month heuristic (validated earlier: peach/zucchini correctly "MISSED" in July
+// via peak_month="August"). Keep this list to unambiguous named-moment language only.
+const MOMENT_ALIASES = {
+  halloween: /halloween|pumpkin|spooky/, thanksgiving: /thanksgiving|turkey|cranberry/,
+  christmas: /christmas|xmas|holiday cookie|gingerbread/, hanukkah: /hanukkah/,
+  'new years eve': /new year/, valentines: /valentine/, easter: /easter/,
+  'st patricks day': /st patrick|shamrock/,
+  'independence day': /4th of july|independence day|patriotic/, 'mothers day': /mother.?s day/,
+  'fathers day': /father.?s day/, 'memorial day': /memorial day/,
+};
+export function matchMoment(keyword, moments) {
+  const k = String(keyword || '').toLowerCase();
+  for (const [alias, re] of Object.entries(MOMENT_ALIASES)) {
+    if (re.test(k)) {
+      const m = moments.find(m => m.name.replace(/s$/, '').includes(alias.replace(/s$/, '').split(' ')[0]) || m.name === alias);
+      if (m) return m;
+    }
+  }
+  return null;
+}
+
 export async function fetchCurves(termList, { country = 'US' } = {}) {
   if (!termList?.length) return [];
   const api = await openApi();

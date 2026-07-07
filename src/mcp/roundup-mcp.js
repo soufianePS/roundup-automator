@@ -22,10 +22,10 @@ import { Sites, Topics, KeywordScores, Articles, ArticleItems, Pins, KeywordBank
 import { WordPress } from '../shared/wordpress.js';
 import { DolphinAnty } from '../shared/dolphin.js';
 import { probePinterestAccount } from '../shared/pinterest-probe.js';
-import { harvestTrends, fetchCurves, weeklyWindowsLastYear, INTEREST_IDS } from '../shared/trends-api.js';
+import { harvestTrends, fetchCurves, weeklyWindowsLastYear, INTEREST_IDS, fetchMoments, matchMoment } from '../shared/trends-api.js';
 import { enrichKeywords } from '../shared/pinclicks.js';
 import { exportSeeds } from '../shared/pinclicks-export.js';
-import { buildShortlist, seasonalTiming } from '../shared/keyword-scoring.js';
+import { buildShortlist, seasonalTiming, timingFromMoment, trendTitles } from '../shared/keyword-scoring.js';
 import { secretOpt } from '../config.js';
 import { Logger } from '../shared/logger.js';
 
@@ -215,9 +215,38 @@ server.tool('keyword_bank_status', 'How many keywords are banked + which seeds h
   wrap(() => ({ total: KeywordBank.count(), seeds: KeywordBank.seeds() })));
 
 server.tool('compute_timing',
-  'DETERMINISTIC seasonal timing for a peak month — anchors on LIFT-OFF (a seasonal term rises ~90d before peak; a new account must publish BEFORE that). Returns {seasonal_timing 0-1, publish_by, verdict, days_to_peak}. ALWAYS call this to set seasonal_timing + publish_by instead of guessing — it correctly marks summer topics in July as LATE ("missed, queue next year") and fall topics as prime. Use its values verbatim when you save_keyword_score.',
+  'DETERMINISTIC seasonal timing for a peak month — anchors on LIFT-OFF (a seasonal term rises ~90d before peak; a new account must publish BEFORE that). Returns {seasonal_timing 0-1, publish_by, verdict, days_to_peak}. FALLBACK ONLY when smart_timing has no moment match — prefer smart_timing.',
   { peak_month: z.string().describe('e.g. "August", "September", "year-round"') },
   wrap(({ peak_month }) => seasonalTiming(peak_month)));
+
+server.tool('smart_timing',
+  'BEST timing call — use this INSTEAD of compute_timing. Tries to match the keyword against Pinterest\'s OWN named-moment calendar (real takeoff/lift-off date + peak date + plateau width, fetched live from Trends, cached 24h) — e.g. "peach cobbler" -> summer, "pumpkin bread" -> halloween/fall. If matched, returns REAL dates and a shape (spike = narrow window like Halloween/New Year, hump = wide window like produce/summer topics, medium) — this is far more precise than guessing from a peak month. Falls back to the peak-month heuristic (like compute_timing) if no moment matches. ALWAYS call this to set seasonal_timing + publish_by.',
+  { keyword: z.string(), peak_month: z.string().optional().describe('fallback if no moment matches, e.g. "August"') },
+  wrap(async ({ keyword, peak_month }) => {
+    const { moments } = await fetchMoments();
+    const m = matchMoment(keyword, moments);
+    if (m && m.peakDate) return timingFromMoment(m);
+    return { ...seasonalTiming(peak_month || ''), source: 'peak_month_fallback' };
+  }));
+
+server.tool('list_moments', 'List Pinterest\'s official named seasonal moments with real takeoff/peak dates + shape (spike/medium/hump). Useful to see the full yearly calendar at a glance.', {},
+  wrap(async () => (await fetchMoments()).moments));
+
+server.tool('trend_titles',
+  'For ONE parent trend/seed (e.g. "peach", "zucchini", "pumpkin"), return MULTIPLE distinct winnable dish/title candidates from the keyword bank — "peach cobbler", "peach fridge cake", "peach cookies" are DIFFERENT dishes and all come back (unlike shortlist_candidates, which collapses near-duplicates to one). Each candidate includes real annotations (Pinterest\'s related-interest tags from the export) to use in the title/description. Call this once per trend when the user wants several best titles under a topic, not just one. Requires the seed to already be exported (pinclicks_export_seeds) or reasonably covered by an existing seed in the bank.',
+  {
+    seed: z.string().describe('the parent trend, e.g. "peach"'),
+    niche: z.enum(['food', 'home', 'any']).optional().describe('filters out off-topic dishes sharing the seed word (e.g. "peach nails", "peach 1st birthday") when the request is for recipes. Default "any" = no filter.'),
+    volMin: z.number().int().optional().describe('default 500'),
+    volMax: z.number().int().optional().describe('default 60000'),
+    limit: z.number().int().optional().describe('how many distinct dishes to return (default 12)'),
+  },
+  wrap(({ seed, niche, volMin, volMax, limit }) => {
+    const rows = KeywordBank.query({ like: seed, minVolume: 0, limit: 1000 });
+    const exclude = new Set(KeywordScores.recentKeywords(500));
+    const taxonomyContains = niche === 'food' ? 'food' : niche === 'home' ? 'home' : null;
+    return trendTitles(rows, { exclude, volMin: volMin ?? 500, volMax: volMax ?? 60000, limit: limit ?? 12, taxonomyContains });
+  }));
 
 server.tool('shortlist_candidates',
   'ONE-CALL offline shortlist (replaces multiple query_keyword_bank calls + agent filtering). Reads the keyword bank, extracts keyword shape, computes a CHEAP competition + winnability PRIOR, drops predicted-LOCKED / bare-head / roundup / already-seen terms, clusters near-duplicate variants to one canonical each, and returns the top pre-ranked candidates. USE THIS to pick which few keywords deserve a live pinclicks_enrich(withTopPins) — do NOT live-check terms it marks predict:"MAYBE" with low cheapWinnability. Saves agent tokens + live PinClicks visits.',

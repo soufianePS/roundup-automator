@@ -86,6 +86,35 @@ export function seasonalTiming(peakMonth, today = new Date()) {
   return { seasonal_timing: score, publish_by, verdict, days_to_peak: dtp };
 }
 
+/**
+ * REAL timing from Pinterest's own Moments data (takeoff/peak dates + shape),
+ * when the keyword matches a named moment (via trends-api.matchMoment). More
+ * precise than the peak-month guess: a SPIKE (Halloween-like, narrow plateau)
+ * needs to be caught before takeoff or the window is basically gone; a HUMP
+ * (produce/recipe-like, wide plateau) still pays off well into the rise.
+ */
+export function timingFromMoment(m, today = new Date()) {
+  const peak = new Date(m.peakDate), takeoff = m.takeoffDate ? new Date(m.takeoffDate) : null;
+  const daysToPeak = Math.round((peak - today) / 86400000);
+  const daysToTakeoff = takeoff ? Math.round((takeoff - today) / 86400000) : null;
+  const shape = m.shape || 'medium';
+  let score, verdict;
+
+  if (daysToPeak < 0) {
+    score = 0.08; verdict = `MISSED: ${m.name} already peaked (${m.peakDate}) — queue for next cycle`;
+  } else if (daysToTakeoff != null && today < takeoff) {
+    const window = shape === 'spike' ? 30 : shape === 'hump' ? 75 : 50;
+    if (daysToTakeoff <= window) { score = 1.0; verdict = `PRIME: ${m.name} lifts off ${m.takeoffDate} (${daysToTakeoff}d) — publish now, ${shape}`; }
+    else { score = 0.4; verdict = `EARLY: ${m.name} lift-off not until ${m.takeoffDate} (${daysToTakeoff}d out) — queue, don't start yet`; }
+  } else {
+    // already past takeoff — inside the rise/plateau
+    if (shape === 'spike') { score = daysToPeak >= 21 ? 0.25 : 0.1; verdict = `LATE: ${m.name} is a SHARP SPIKE already lifting off — narrow window nearly gone (peak ${m.peakDate})`; }
+    else if (shape === 'hump') { score = daysToPeak >= 14 ? 0.6 : 0.3; verdict = `MID-RISE: ${m.name} is a WIDE HUMP (${m.plateauDays}d plateau) — still a long runway to peak ${m.peakDate}`; }
+    else { score = daysToPeak >= 21 ? 0.45 : 0.2; verdict = `MID-RISE: ${m.name}, moderate window, peak ${m.peakDate}`; }
+  }
+  return { seasonal_timing: score, publish_by: verdict.split(':')[0] === 'PRIME' ? 'start now' : verdict, verdict, days_to_peak: daysToPeak, shape, source: 'pinterest_moments' };
+}
+
 /** Post type from phrasing (SERP still overrides later). */
 export function classifyPostType(keyword) {
   const k = String(keyword || '').toLowerCase();
@@ -184,6 +213,7 @@ export function buildShortlist(rows, opts = {}) {
       predict: comp >= 0.48 ? 'MAYBE' : 'WINNABLE',
       postType: classifyPostType(r.keyword), wedges: f.wedges,
       taxonomy: (r.taxonomy || '').split('\n')[0] || '',
+      annotations: r.related_interests || r.relatedInterests || '',
     });
   }
 
@@ -196,4 +226,58 @@ export function buildShortlist(rows, opts = {}) {
   return [...byCluster.values()]
     .sort((a, b) => b.cheapWinnability - a.cheapWinnability)
     .slice(0, limit);
+}
+
+/**
+ * MULTI-TITLE expansion for ONE parent trend (e.g. "peach"): unlike buildShortlist
+ * (which collapses everything to a single best-per-cluster shortlist across the
+ * WHOLE category), this keeps every DISTINCT dish/title under the trend — "peach
+ * cobbler", "peach fridge cake", "peach cookies" are different clusters and all
+ * survive, each with its own volume + real annotations (related_interests).
+ * @param rows  bank rows already filtered to this trend (e.g. KeywordBank.query({like:seed}))
+ * @param opts  { exclude, volMin, volMax, maxPerDish=1, limit=12 }
+ * @returns [{keyword, volume, cheapCompetition, cheapWinnability, predict, postType, annotations, dish}]
+ */
+const OFF_TOPIC_FOR_FOOD = /\bnails?\b|\bbirthday\b|\bparty (?:decor|outfit|theme)|\boutfit\b|\bdress\b|\bhair(style)?\b|\bmakeup\b|\bnursery\b|\bwallpaper\b|\btattoo\b/;
+
+export function trendTitles(rows, opts = {}) {
+  const { exclude = new Set(), volMin = 500, volMax = 60000, limit = 12, taxonomyContains = null } = opts;
+  const seen = new Set([...exclude].map(s => String(s).toLowerCase()));
+  const headVolume = Math.max(...rows.map(r => (extractFeatures(r.keyword).isBareHead ? Number(r.volume) || 0 : 0)), 0);
+  const prefixCount = new Map();
+  for (const r of rows) {
+    const p = extractFeatures(r.keyword).keyword.split(/\s+/).slice(0, 2).join(' ');
+    prefixCount.set(p, (prefixCount.get(p) || 0) + 1);
+  }
+  const byDish = new Map();   // dish (stem) -> best candidate for that dish
+  for (const r of rows) {
+    const f = extractFeatures(r.keyword);
+    const vol = Number(r.volume) || 0;
+    if (seen.has(f.keyword)) continue;
+    if (vol < volMin || vol > volMax) continue;
+    if (f.tokenCount < 2) continue;   // "peach" alone isn't a dish; "peach cake" is
+    if (taxonomyContains) {
+      const tax = (r.taxonomy || '').toLowerCase();
+      if (tax && !tax.includes(taxonomyContains)) continue;   // off-topic (e.g. "peach nails")
+      // Blank taxonomy rows can't be checked that way — fall back to an off-topic
+      // keyword filter for recipe requests (nails/fashion/party themes etc).
+      if (!tax && taxonomyContains === 'food' && OFF_TOPIC_FOR_FOOD.test(f.keyword)) continue;
+    }
+    const prefix = f.keyword.split(/\s+/).slice(0, 2).join(' ');
+    const siblingCount = prefixCount.get(prefix) || 1;
+    const comp = cheapCompetition(r, { headVolume, siblingCount });
+    if (comp >= 0.78) continue;   // predicted hard-LOCKED — not worth even listing
+    const win = cheapWinnability(r, { headVolume, siblingCount });
+    const dish = stem(r.keyword);
+    const cand = {
+      keyword: f.keyword, volume: vol, dish,
+      cheapCompetition: comp, cheapWinnability: win,
+      predict: comp >= 0.48 ? 'MAYBE' : 'WINNABLE',
+      postType: classifyPostType(r.keyword),
+      annotations: r.related_interests || r.relatedInterests || '',
+    };
+    const cur = byDish.get(dish);
+    if (!cur || cand.cheapWinnability > cur.cheapWinnability) byDish.set(dish, cand);
+  }
+  return [...byDish.values()].sort((a, b) => b.cheapWinnability - a.cheapWinnability).slice(0, limit);
 }

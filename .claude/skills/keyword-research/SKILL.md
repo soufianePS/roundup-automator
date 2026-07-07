@@ -63,6 +63,27 @@ Two consequences to internalize:
    treat it as **directional**, and cross-check with an external proxy (Google Keyword
    Planner / Keywords Everywhere, or the Google-volume × Pinterest-trend heuristic).
 
+## When the user asks for N "recipes" / "topics on X" — give N TRENDS, each with SEVERAL titles
+This is the primary interpretation of "give me N recipes": **N is the number of
+distinct TRENDS to cover, and each trend should surface several distinct winnable
+titles under it** (different dishes/angles, not phrasing variants) — e.g. asking for
+"2 recipes" on a rising trend "peach" should look inside the peach trend and hand
+back several real options: peach cobbler, peach dump cake, peach crisp, peach
+cookies, gluten-free peach cobbler — genuinely different dishes, each scored, not
+one keyword per trend.
+
+Workflow:
+1. `harvest_trends` (category, discovery) → pick the top N rising, non-locked
+   **parent trends** (e.g. "peach", "zucchini").
+2. For EACH trend: `pinclicks_export_seeds([seed])` if not already banked, then
+   `trend_titles(seed, {niche:'food'})` — this returns MULTIPLE distinct dish/title
+   candidates for that ONE trend, each with real Pinterest annotations
+   (`related_interests` from the export) ready to reuse in the title/description.
+3. Live-check (`pinclicks_enrich withTopPins`) only the best 1–3 per trend (respect
+   the live budget — see below), then `smart_timing` for the real publish window.
+4. Save every kept title with `save_keyword_score`, noting which parent trend it
+   belongs to in `source_notes`.
+
 ## PinClicks — BANK FIRST (offline), enrich the shortlist only
 The efficient path separates cheap bulk *collection* from free *analysis*:
 1. **`keyword_bank_status`** — see what's already banked. If your topic area is covered
@@ -345,12 +366,18 @@ Each sub-signal is 0–1:
     = high (0.8–1.0), because it promises more than one image can show — a genuine
     curiosity gap. Pure aesthetic/mood terms ("cozy fall aesthetic", "dream living
     room") = low (0.2–0.4): people save the picture and never click.
-- **seasonalTiming** — DON'T guess this. Call **`compute_timing(peak_month)`** and use
-  its `seasonal_timing` + `publish_by` verbatim. It anchors on LIFT-OFF (a seasonal term
-  rises ~90d before peak; a new account must publish BEFORE that), so it correctly scores
-  a term whose peak is <45 days out as LATE ("missed — queue for next year"), not "start
-  now". Example: in July, an August-peak topic (summer produce) → 0.25 MISSED; an
-  October-peak topic (fall decor) → 1.0 prime. This is the fix for the peach/zucchini
+- **seasonalTiming** — DON'T guess this. Call **`smart_timing(keyword, peak_month)`**
+  and use its `seasonal_timing` + `publish_by` verbatim. It first tries to match the
+  keyword against **Pinterest's own named-moment calendar** (real takeoff/peak dates +
+  shape, fetched live) — e.g. peach/zucchini/produce → "summer", pumpkin/spooky →
+  "halloween". When matched you get REAL dates and a **shape**: `spike` (narrow window,
+  Halloween/New-Year-like — miss the lift-off and it's gone) vs `hump` (wide window,
+  produce/summer-like — still pays off well into the rise) vs `medium`. No match →
+  falls back to the peak-month heuristic (`compute_timing`) automatically. It anchors
+  on LIFT-OFF (must publish BEFORE that), so it correctly scores a term whose peak is
+  <45 days out as LATE ("missed — queue for next year"), not "start now". Example: in
+  July, an August-peak topic (summer produce) → 0.25 MISSED; an October-peak topic
+  (fall decor) → 1.0 prime. This is the fix for the peach/zucchini
   mistake — never mark a topic "start now" when its peak is already <45 days away.
 - **momentum** — Trends 30-day curve rising (a whole related cluster rising = high).
 - **fit** — thematic coherence to a site category (Pinterest scores image↔title↔board↔
@@ -420,9 +447,9 @@ annotations, top_pin_saves, search_volume, trend_points, source_notes}`.
   honest and **on a 0–100 scale** (e.g. 62, NOT 0.62 — remember the `round(100 * …)` in
   the formula; saving a 0–1 fraction is a bug).
 - `peak_month`: the month demand peaks (e.g. "November"), or "year-round" for evergreen.
-- `seasonal_timing` + `publish_by`: take BOTH from `compute_timing(peak_month)` — do not
-  hand-write them. If it returns a LATE/MISSED verdict, either drop the topic (past its
-  window) or keep it only with the honest "queue for next year" publish_by; never label a
+- `seasonal_timing` + `publish_by`: take BOTH from `smart_timing(keyword, peak_month)` —
+  do not hand-write them. If it returns a LATE/MISSED verdict, either drop the topic
+  (past its window) or keep it only with the honest "queue for next year" publish_by; never label a
   past-lift-off topic "start now".
 Put a one-line note in `source_notes` on what you saw AND the timing verdict, e.g.
 "Trends 78, rising cluster, peaks Nov → publish by ~mid-Sep; PinClicks vol solid,

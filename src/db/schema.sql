@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS keyword_bank (
   volume        INTEGER,                   -- PinClicks search volume (comparative)
   url           TEXT,                      -- pinterest idea page
   taxonomy      TEXT,
+  related_interests TEXT,                 -- comma-joined interest names from the export (real annotations, free)
   source_seed   TEXT,                      -- which export seed surfaced it
   exported_at   TEXT DEFAULT (datetime('now'))
 );
