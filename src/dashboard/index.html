@@ -109,17 +109,21 @@ function buildPrompt(userText){
   const cat = $('optCat').value;
   const fmt = $('optFmt').value;
   const extra = (userText && userText.trim()) ? `Extra detail: ${userText.trim()}.` : '';
-  return `Find me up to ${count} of the BEST ${cat ? cat + ' ' : ''}topics to work on. I plan to publish ${when}. Format: ${fmt}. ${extra}
+  return `Find me ${count} DISTINCT ${cat ? cat + ' ' : ''}TRENDS to work on — NOT ${count} random keywords. I plan to publish ${when}. Format: ${fmt}. ${extra}
 
-Use your keyword-research skill and the FAST bank-first pipeline (harvest_trends → keyword bank → pinclicks_enrich withTopPins on the shortlist).
+STRUCTURE (this is the actual request — follow it literally):
+1. Use harvest_trends (+ the keyword bank) to identify ${count} genuinely DISTINCT rising parent trends (different topics/ingredients/themes, not variations of the same one).
+2. For EACH of those ${count} trends: call trend_titles(seed, {niche:'food'}) to pull several candidate dish/title options under that ONE trend, then live-check (pinclicks_enrich withTopPins) the best 1-2 candidates from it.
+3. Save the best WINNABLE (or best available) title FROM EACH trend — aim for ${count} results, one clearly tied to each trend, not ${count} keywords all pulled from one pool.
 
 CRITICAL rules:
-1. DEDUP — call recent_keywords first and DO NOT re-suggest any trend already surfaced before. I don't want to see the same topics again.
-2. WORTH-IT ONLY — return only topics genuinely worth working on (WINNABLE / decent volume for a new blog). If fewer than ${count} are truly worth it, return FEWER and tell me which you dropped and why. Never pad with weak picks.
-3. TIMING — I'm publishing ${when}, so pick trends whose publish window fits that, and set publish_by to the concrete date I should START working on each.
-4. Honor the Format above (single-topic vs roundup) using the SERP, not just phrasing.
+1. DEDUP — call recent_keywords first and DO NOT re-suggest any trend already surfaced before.
+2. NEVER SILENTLY DROP A WINNABLE FIND — if a candidate you live-checked comes back WINNABLE, you MUST either save it or explicitly tell me why you chose not to (e.g. "redundant with #2"). Do not just omit it from the summary with no trace.
+3. WORTH-IT ONLY — if fewer than ${count} trends truly have a worth-it title, return fewer and say which trend(s) you dropped and why. Never pad with weak picks.
+4. TIMING — I'm publishing ${when}; use smart_timing(keyword, peak_month) for every save (never hand-write publish_by), and prefer trends whose window fits ${when}.
+5. Honor the Format above (single-topic vs roundup) using the SERP, not just phrasing.
 
-Save each kept topic with save_keyword_score (opportunity_score 0-100, ctr_intent, competition, momentum, seasonal_timing, peak_month, publish_by, title_suggestion, pin_description, annotations, top_pin_saves, search_volume, trend_points). End with a ranked table + note anything you dropped as not worth it.`;
+Save each kept topic with save_keyword_score (opportunity_score 0-100, ctr_intent, competition, momentum, seasonal_timing, peak_month, publish_by, title_suggestion, pin_description, annotations, top_pin_saves, search_volume, trend_points). End with a table grouped BY TREND showing what you saved (or dropped) for each.`;
 }
 
 // month name for the eyebrow

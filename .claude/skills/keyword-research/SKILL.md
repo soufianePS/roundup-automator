@@ -509,6 +509,13 @@ same bias forever.
   (WINNABLE / real volume for a new blog), save M and clearly say which you dropped and
   why ("3 requested; 2 worth it — dropped 'X': locked SERP, 8k-save fresh incumbent").
   A weak pick padded to hit a number wastes the user's work.
+- **NEVER SILENTLY DROP A WINNABLE FIND.** If a live-checked candidate comes back
+  WINNABLE (or MAYBE and you'd otherwise keep it), you MUST either `save_keyword_score`
+  it or explicitly say in your final summary why you chose not to (e.g. "redundant with
+  #2's cluster", "same dish as X"). Do not just omit a good find from the output with no
+  trace — this happened before (a WINNABLE "fig recipes healthy" was found, live-checked,
+  then silently never saved or mentioned). Track every candidate you live-check through
+  to either a save or an explicit, stated reason for dropping it.
 - **publish_by = the START date**, phrased concretely and actionably ("start now", "start
   by mid-August") — the dashboard shows it as the "Start working" cue, so make it a real
   go-signal, not just the peak month.
