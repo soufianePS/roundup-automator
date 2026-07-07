@@ -242,5 +242,53 @@ app.get('/api/keywords/since', (req, res) => {
 app.get('/api/logs', (req, res) => res.json(Logger.getLogs()));
 app.get('/api/state', (req, res) => res.json({ ok: true, activeSite: Sites.getActive()?.name || null }));
 
+// GET /api/update/check — is origin/main ahead of what's checked out locally?
+app.get('/api/update/check', async (req, res) => {
+  try {
+    const { execSync } = await import('child_process');
+    const cwd = PROJECT_ROOT;
+    try { execSync('git fetch', { cwd, stdio: 'pipe', timeout: 15000 }); } catch {}
+    const local = execSync('git rev-parse HEAD', { cwd, stdio: 'pipe' }).toString().trim();
+    const remote = execSync('git rev-parse @{u}', { cwd, stdio: 'pipe' }).toString().trim();
+    const behind = execSync('git rev-list HEAD..@{u} --count', { cwd, stdio: 'pipe' }).toString().trim();
+    const branch = execSync('git branch --show-current', { cwd, stdio: 'pipe' }).toString().trim();
+    const lastCommit = execSync('git log -1 --format="%s (%ar)"', { cwd, stdio: 'pipe' }).toString().trim();
+    res.json({
+      ok: true,
+      hasUpdate: local !== remote,
+      behind: parseInt(behind) || 0,
+      branch,
+      localCommit: local.substring(0, 7),
+      remoteCommit: remote.substring(0, 7),
+      lastCommit,
+    });
+  } catch (e) {
+    res.json({ ok: false, error: e.message, hasUpdate: false });
+  }
+});
+
+// POST /api/update/pull — pull latest code + install deps, then restart
+// (start.bat runs the server in a restart loop, so process.exit(0) here
+// just relaunches with the new code).
+app.post('/api/update/pull', async (req, res) => {
+  try {
+    const { exec } = await import('child_process');
+    const cwd = PROJECT_ROOT;
+    Logger.info('[Update] Pulling latest code from GitHub...');
+    const result = await new Promise((resolve, reject) => {
+      exec('git pull && npm install --production', { cwd, timeout: 120000 }, (err, stdout, stderr) => {
+        if (err) reject(new Error(stderr || err.message));
+        else resolve(stdout);
+      });
+    });
+    Logger.success('[Update] Code updated: ' + result.trim().split('\n').slice(0, 3).join(' | '));
+    res.json({ ok: true, message: 'Update complete. Restarting in 2 seconds...', output: result.trim() });
+    setTimeout(() => process.exit(0), 2000);
+  } catch (e) {
+    Logger.error('[Update] Failed:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 const PORT = process.env.PORT || 3100;
 app.listen(PORT, () => Logger.success(`[server] roundup-automator → http://localhost:${PORT}`));

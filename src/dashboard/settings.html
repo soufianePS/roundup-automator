@@ -3,8 +3,6 @@
     <div class="brand"><div class="dot">R</div><div><b>Roundup</b><span>Family Home Studio</span></div></div>
     <nav>
       <a href="/"><span class="ic">◧</span> Overview</a>
-      <a href="/#queue"><span class="ic">☰</span> Topic Queue</a>
-      <a href="/#queue"><span class="ic">☰</span> Topic Queue</a>
       <a class="soon"><span class="ic">▤</span> Articles <em>soon</em></a>
       <a class="soon"><span class="ic">◈</span> Pins &amp; Schedule <em>soon</em></a>
       <a class="active" href="/settings"><span class="ic">⚙</span> Settings</a>
@@ -20,6 +18,19 @@
         <p class="lead">Manage your sites and the agent's browser. Shared keys (Dolphin, PinClicks, Gemini) live in <code>config/secrets.json</code>.</p>
       </div>
     </div>
+
+    <!-- App update: pull latest code from GitHub without a manual git pull -->
+    <div class="card"><div class="core">
+      <div class="card-h"><h2>App update</h2><span class="hint" id="updateHint">click Check</span></div>
+      <div class="section">
+        <div class="picker">
+          <span class="status idle" id="updateStatus">Click "Check" to look for updates</span>
+          <button class="btn" id="updCheckBtn">Check</button>
+          <button class="btn primary hidden" id="updPullBtn">Update now</button>
+        </div>
+        <p class="fhint" id="updateDetails" style="margin-top:10px"></p>
+      </div>
+    </div></div>
 
     <!-- Agent browser: one persistent logged-in profile the agent reuses -->
     <div class="card"><div class="core">
@@ -110,6 +121,44 @@ async function jfetch(url, opts){
 }
 
 let sites = [], cur = null;
+
+// ── App update ──
+async function checkForUpdate(){
+  const status=$('updateStatus'), details=$('updateDetails'), pullBtn=$('updPullBtn');
+  status.className='status busy'; status.textContent='Checking…';
+  pullBtn.classList.add('hidden');
+  const r = await jfetch('/api/update/check');
+  if(r.error || !r.ok){
+    status.className='status err'; status.textContent='Git not set up on this machine';
+    details.textContent = r.error||''; $('updateHint').textContent='error';
+    return;
+  }
+  if(r.hasUpdate){
+    status.className='status idle'; status.textContent=`Update available — ${r.behind} commit(s) behind`;
+    pullBtn.classList.remove('hidden'); $('updateHint').textContent='update ready';
+  } else {
+    status.className='status ok'; status.textContent='Up to date';
+    $('updateHint').textContent='up to date';
+  }
+  details.textContent = `Branch: ${r.branch} · local ${r.localCommit} · remote ${r.remoteCommit} · last: ${r.lastCommit}`;
+}
+async function pullUpdate(){
+  if(!confirm('This pulls the latest code from GitHub and restarts the app. Your data (DB, settings, secrets) is untouched. Continue?')) return;
+  const status=$('updateStatus'), pullBtn=$('updPullBtn');
+  status.className='status busy'; status.textContent='Updating…'; pullBtn.classList.add('hidden');
+  const r = await jfetch('/api/update/pull',{method:'POST'});
+  if(r.error){ status.className='status err'; status.textContent='Update failed: '+r.error; return; }
+  status.className='status busy'; status.textContent='Updated — restarting…';
+  setTimeout(async ()=>{
+    for(let i=0;i<20;i++){
+      try{ const ok = await fetch('/api/state').then(x=>x.ok).catch(()=>false); if(ok){ status.className='status ok'; status.textContent='Restarted on latest version'; return; } }catch{}
+      await new Promise(res=>setTimeout(res,1500));
+    }
+    status.className='status err'; status.textContent='Taking longer than expected — refresh the page';
+  }, 2500);
+}
+$('updCheckBtn').onclick=checkForUpdate;
+$('updPullBtn').onclick=pullUpdate;
 
 // ── Agent browser ──
 async function loadBrowser(){
@@ -222,5 +271,5 @@ $('delBtn').onclick=async()=>{ if(cur.id && confirm('Delete this site?')){ await
 $('pinChips').onclick=e=>{ const b=e.target.closest('button[data-rm]'); if(!b) return; cur.pinterest_accounts.splice(+b.dataset.rm,1); renderPins(); };
 $('siteList').onclick=e=>{ const it=e.target.closest('.site-item[data-id]'); if(!it) return; cur=JSON.parse(JSON.stringify(sites.find(s=>s.id==it.dataset.id))); loadSites(); renderEditor(); };
 
-(async function init(){ await loadSites(); loadDolphin(); loadBrowser(); loadProfiles(); })();
+(async function init(){ await loadSites(); loadDolphin(); loadBrowser(); loadProfiles(); checkForUpdate(); })();
 </script>
