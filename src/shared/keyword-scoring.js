@@ -37,6 +37,55 @@ export function extractFeatures(keyword) {
   };
 }
 
+const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+const fmtDate = (d) => `${MONTHS[d.getMonth()].slice(0, 3).replace(/^\w/, c => c.toUpperCase())} ${d.getDate()}, ${d.getFullYear()}`;
+
+/**
+ * Lift-off-anchored seasonal timing (deterministic — no fragile curve API).
+ * A seasonal keyword lifts off ~90 days before its peak; a NEW account must publish
+ * in the flat BEFORE lift-off. So the ideal START window is peak−120 … peak−60 days.
+ * Past that (getting close to / into the peak) = too late this cycle → queue next year.
+ *
+ * @param peakMonth  e.g. "August", "September (secondary Jan)", "year-round"
+ * @returns { seasonal_timing 0-1, publish_by, verdict, days_to_peak }
+ */
+export function seasonalTiming(peakMonth, today = new Date()) {
+  const pm = String(peakMonth || '').toLowerCase();
+  if (!pm || /year.?round|evergreen|anytime|no strong season/.test(pm)) {
+    return { seasonal_timing: 0.5, publish_by: 'anytime (evergreen)', verdict: 'evergreen — publish whenever', days_to_peak: null };
+  }
+  const idx = MONTHS.findIndex(m => pm.includes(m));
+  if (idx < 0) return { seasonal_timing: 0.5, publish_by: 'unknown', verdict: 'unknown peak month', days_to_peak: null };
+
+  // next upcoming ~15th of the peak month
+  let peak = new Date(today.getFullYear(), idx, 15);
+  if (peak < today) peak = new Date(today.getFullYear() + 1, idx, 15);
+  const dtp = Math.round((peak - today) / 86400000);
+  const idealStart = new Date(peak.getTime() - 90 * 86400000);   // publish ~90d before peak
+
+  let score, verdict, publish_by;
+  if (dtp >= 150) {
+    score = 0.4; publish_by = `plan — start ~${fmtDate(idealStart)}`;
+    verdict = `EARLY: peak ~${MONTHS[idx]}; ideal start ~${fmtDate(idealStart)} — queue, don't start yet`;
+  } else if (dtp >= 90) {
+    score = 1.0; publish_by = `start now — by ${fmtDate(idealStart)}`;
+    verdict = `PRIME: ~${dtp}d to peak, right in the pre-lift-off window`;
+  } else if (dtp >= 60) {
+    score = 0.8; publish_by = `start this week`;
+    verdict = `GOOD: ~${dtp}d to peak — still time before the climb`;
+  } else if (dtp >= 45) {
+    score = 0.5; publish_by = `start immediately`;
+    verdict = `TIGHT: only ~${dtp}d to peak — lift-off is basically now, publish today or skip`;
+  } else {
+    // dtp < 45 → we're in/at the rise or past lift-off → too late for a new account
+    score = dtp >= 21 ? 0.25 : 0.08;
+    const nextStart = new Date(peak.getFullYear() + 1, idx, 15).getTime() - 90 * 86400000;
+    publish_by = `MISSED this cycle — queue for ~${fmtDate(new Date(nextStart))}`;
+    verdict = `LATE: only ~${dtp}d to peak — past lift-off, publishing now enters the peak against aged pins. Queue for next year (start ~${fmtDate(new Date(nextStart))}).`;
+  }
+  return { seasonal_timing: score, publish_by, verdict, days_to_peak: dtp };
+}
+
 /** Post type from phrasing (SERP still overrides later). */
 export function classifyPostType(keyword) {
   const k = String(keyword || '').toLowerCase();

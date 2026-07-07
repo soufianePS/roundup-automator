@@ -25,7 +25,7 @@ import { probePinterestAccount } from '../shared/pinterest-probe.js';
 import { harvestTrends, fetchCurves, weeklyWindowsLastYear, INTEREST_IDS } from '../shared/trends-api.js';
 import { enrichKeywords } from '../shared/pinclicks.js';
 import { exportSeeds } from '../shared/pinclicks-export.js';
-import { buildShortlist } from '../shared/keyword-scoring.js';
+import { buildShortlist, seasonalTiming } from '../shared/keyword-scoring.js';
 import { secretOpt } from '../config.js';
 import { Logger } from '../shared/logger.js';
 
@@ -213,6 +213,11 @@ server.tool('query_keyword_bank',
 
 server.tool('keyword_bank_status', 'How many keywords are banked + which seeds have been exported (freshness).', {},
   wrap(() => ({ total: KeywordBank.count(), seeds: KeywordBank.seeds() })));
+
+server.tool('compute_timing',
+  'DETERMINISTIC seasonal timing for a peak month — anchors on LIFT-OFF (a seasonal term rises ~90d before peak; a new account must publish BEFORE that). Returns {seasonal_timing 0-1, publish_by, verdict, days_to_peak}. ALWAYS call this to set seasonal_timing + publish_by instead of guessing — it correctly marks summer topics in July as LATE ("missed, queue next year") and fall topics as prime. Use its values verbatim when you save_keyword_score.',
+  { peak_month: z.string().describe('e.g. "August", "September", "year-round"') },
+  wrap(({ peak_month }) => seasonalTiming(peak_month)));
 
 server.tool('shortlist_candidates',
   'ONE-CALL offline shortlist (replaces multiple query_keyword_bank calls + agent filtering). Reads the keyword bank, extracts keyword shape, computes a CHEAP competition + winnability PRIOR, drops predicted-LOCKED / bare-head / roundup / already-seen terms, clusters near-duplicate variants to one canonical each, and returns the top pre-ranked candidates. USE THIS to pick which few keywords deserve a live pinclicks_enrich(withTopPins) — do NOT live-check terms it marks predict:"MAYBE" with low cheapWinnability. Saves agent tokens + live PinClicks visits.',

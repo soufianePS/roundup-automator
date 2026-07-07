@@ -345,9 +345,13 @@ Each sub-signal is 0–1:
     = high (0.8–1.0), because it promises more than one image can show — a genuine
     curiosity gap. Pure aesthetic/mood terms ("cozy fall aesthetic", "dream living
     room") = low (0.2–0.4): people save the picture and never click.
-- **seasonalTiming** — 1.0 if we're **60–90 days before the peak** right now (or
-  ~25–30% up last year's curve), declining linearly to ~0 by <30 days out; 0.5 for
-  true evergreen.
+- **seasonalTiming** — DON'T guess this. Call **`compute_timing(peak_month)`** and use
+  its `seasonal_timing` + `publish_by` verbatim. It anchors on LIFT-OFF (a seasonal term
+  rises ~90d before peak; a new account must publish BEFORE that), so it correctly scores
+  a term whose peak is <45 days out as LATE ("missed — queue for next year"), not "start
+  now". Example: in July, an August-peak topic (summer produce) → 0.25 MISSED; an
+  October-peak topic (fall decor) → 1.0 prime. This is the fix for the peach/zucchini
+  mistake — never mark a topic "start now" when its peak is already <45 days away.
 - **momentum** — Trends 30-day curve rising (a whole related cluster rising = high).
 - **fit** — thematic coherence to a site category (Pinterest scores image↔title↔board↔
   landing-page consistency; incoherence gets suppressed, so only keep on-theme picks).
@@ -416,8 +420,10 @@ annotations, top_pin_saves, search_volume, trend_points, source_notes}`.
   honest and **on a 0–100 scale** (e.g. 62, NOT 0.62 — remember the `round(100 * …)` in
   the formula; saving a 0–1 fraction is a bug).
 - `peak_month`: the month demand peaks (e.g. "November"), or "year-round" for evergreen.
-- `publish_by`: the concrete publish-by date to catch the rise (e.g. "mid-September"),
-  derived from the lead-time rule. This drives the "Publish by" badge on each card.
+- `seasonal_timing` + `publish_by`: take BOTH from `compute_timing(peak_month)` — do not
+  hand-write them. If it returns a LATE/MISSED verdict, either drop the topic (past its
+  window) or keep it only with the honest "queue for next year" publish_by; never label a
+  past-lift-off topic "start now".
 Put a one-line note in `source_notes` on what you saw AND the timing verdict, e.g.
 "Trends 78, rising cluster, peaks Nov → publish by ~mid-Sep; PinClicks vol solid,
 small blogs ranking, low competition".
