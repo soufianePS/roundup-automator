@@ -110,6 +110,14 @@ The efficient path separates cheap bulk *collection* from free *analysis*:
    do NOT pivot round after round.** If fewer than asked pass, return fewer (see below).
    The app also enforces a circuit breaker (caps live visits, 24h cooldown after a
    block), so respect a `budgetExhausted`/`blocked` result and stop.
+   **BAIL OUT OF A DEAD TREND FAST — this is critical when covering multiple trends
+   in one run.** The live budget is shared across ALL trends in the request, so
+   spending it on one bad trend starves the others. If the first **2–3** checks under
+   a trend all come back LOCKED, STOP checking more candidates from that trend — move
+   on to the next trend instead. Do not exhaust a trend's whole candidate list hoping
+   the next one is different; that burns the shared budget and leaves fewer or zero
+   checks for trends that might actually have winners. (Observed: one dead trend ate
+   7 of ~12 available checks in a single run, leaving almost nothing for the rest.)
 
 **Legacy live path** (`pinclicks_enrich` without a bank) still works but is slower — the
 bank is preferred. RULES (PinClicks is behind Cloudflare and WILL block bulk automation):
@@ -520,9 +528,14 @@ same bias forever.
   WINNABLE (or MAYBE and you'd otherwise keep it), you MUST either `save_keyword_score`
   it or explicitly say in your final summary why you chose not to (e.g. "redundant with
   #2's cluster", "same dish as X"). Do not just omit a good find from the output with no
-  trace — this happened before (a WINNABLE "fig recipes healthy" was found, live-checked,
-  then silently never saved or mentioned). Track every candidate you live-check through
-  to either a save or an explicit, stated reason for dropping it.
+  trace — this has happened TWICE (a WINNABLE "fig recipes healthy" and later a WINNABLE
+  "homemade tomato sauce with fresh tomatoes", comp 0.25, both live-checked then silently
+  never saved or mentioned). **Concrete fix: call `save_keyword_score` IMMEDIATELY after
+  each `pinclicks_enrich` call returns a WINNABLE (or keep-worthy) verdict — right then,
+  one candidate at a time — instead of checking a whole batch first and deciding what to
+  save afterward from memory.** Batching the save decision to the end is exactly how a
+  good find gets lost. Track every candidate you live-check through to either an
+  immediate save or an explicit, stated reason for dropping it.
 - **publish_by = the START date**, phrased concretely and actionably ("start now", "start
   by mid-August") — the dashboard shows it as the "Start working" cue, so make it a real
   go-signal, not just the peak month.
