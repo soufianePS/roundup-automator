@@ -1,0 +1,149 @@
+---
+name: pinclicks
+description: How to safely drive PinClicks (app.pinclicks.com) — bulk keyword export, per-keyword volume + competition lookups, Cloudflare-block avoidance, and what each data field actually is. Read this before writing ANY code or script that touches pinclicks.com directly, even for one-off testing/exploration.
+---
+
+# PinClicks — safe usage, real data sources, Cloudflare risk
+
+PinClicks is a third-party Pinterest keyword research tool. It has no public API —
+the app drives the real logged-in browser and scrapes the rendered UI. It sits
+behind Cloudflare, and Cloudflare blocks are real, have actually happened to this
+project multiple times, and can be **IP-level, not just profile-level** (confirmed
+2026-07-08 — see "What actually happened" below). Treat every interaction with it
+as something that costs safety budget, not something free to retry.
+
+## THE ONE RULE THAT MATTERS MOST
+
+**Never write your own script/page.goto() against pinclicks.com — always go through
+`src/shared/pinclicks.js` (`enrichKeywords`) or `src/shared/pinclicks-export.js`
+(`exportSeeds`), i.e. the MCP tools `pinclicks_enrich` / `pinclicks_export_seeds`.**
+
+Those functions are the ONLY places that carry the safe launch pattern, the human
+pacing, the block detector, and the circuit breaker. A raw/ad-hoc script bypasses
+ALL of that — including the persisted rate-limit budget, so it doesn't even show up
+as "spent" for the next real run. This is exactly what caused a real block on
+2026-07-08 (see below).
+
+## Two workflows — know which one you need
+
+### 1. Bulk export (`pinclicks_export_seeds` → `exportSeeds()`)
+The CHEAP, high-yield path. Drives **Keyword Explorer**
+(`app.pinclicks.com/keyword-explorer`), types a broad seed (e.g. "pumpkin", NOT
+"pumpkin bread air fryer"), waits for results, clicks the real **Export** button,
+downloads the CSV, and parses it into the local `keyword_bank` table (~1000 rows per
+seed, one page load + one Export click). Do this ONCE per topic area, then query the
+bank OFFLINE and FREE afterward (`query_keyword_bank`, `shortlist_candidates`) —
+never re-loop PinClicks live for discovery.
+
+CSV columns actually used (`parseExport()` in pinclicks-export.js):
+- **Label** → the keyword itself
+- **Search Volume** → parsed to an integer
+- **URL**, **Taxonomy** → category context
+- **Related Interests** → the cell looks like `"lawn and garden (url)\npumpkin
+  carving (url)\n..."` — one `name (url)` per line. Parsed to just the names, capped
+  at 8, comma-joined. **This is where the `annotations` field on saved keywords
+  comes from.** It is genuinely PulledPinterest data, not invented — but it is
+  frequently EMPTY for narrow long-tail keywords (PinClicks doesn't always have
+  related-interest data for every row). An empty annotations field is a real data
+  gap, not a bug — don't try to backfill it with guessed tags.
+
+### 2. Per-keyword live lookup (`pinclicks_enrich` → `enrichKeywords()`)
+The SLOW, capped path — only for your FINAL shortlist (≤8 keywords), never a big
+list. Two things it can do:
+- **Volume + related terms**: types the keyword into the search box, reads the
+  rendered table row for that exact keyword + up to 12 related rows.
+- **Top Pins competition read** (`withTopPins: true`): navigates to
+  `app.pinclicks.com/pins?search=<keyword>`, scrapes the top 10 pin rows (title,
+  domain, date, saves), and computes a competition score:
+  ```
+  comp = 0.4
+    + 0.35 if exactMatchTop5 >= 4   (else -0.2 if <= 1)
+    + 0.30 if freshHighSave >= 1    (a <3mo-old pin with >500 saves = a real incumbent)
+    + 0.20 if medianSaves > 1000    (else -0.2 if < 300 recipe / 150 home)
+    - 0.15 if staleCount >= 3       (3+ pins >12mo old = ranking has gone stale, opening)
+    + 0.20 if bigMedia >= 3         (thespruce/bhg/foodnetwork/etc. dominate)
+    - 0.15 if weakPins >= 3         (3+ pins under the save floor = thin competition)
+  clamped to [0.05, 1]
+  verdict: <=0.35 WINNABLE | <=0.6 "maybe, needs a better angle" | >0.6 LOCKED
+  ```
+  This is the REAL competition signal — never guess competition from keyword
+  phrasing alone.
+
+**What's NOT currently scraped**: clicking into an individual pin's own detail page
+(as opposed to the search-results row). The user has observed that opening a
+specific pin inside PinClicks shows keyword/tag data associated with that pin — this
+could be a genuinely different, more granular annotation source than the bulk
+Related Interests column, but **this has not been verified or built yet** — an
+investigation attempt on 2026-07-08 was cut short by a real Cloudflare block before
+it could be completed (see below). Do not assume this feature exists in the code
+until it's actually been built and tested.
+
+## Safety mechanics (all in `pinclicks.js`)
+
+- **Human-paced typing**: each character typed with `rand(70-150ms)` delay, not
+  `.fill()`.
+- **Waits after actions**: 5-11s after page loads, 7-10s after Enter (let the
+  Livewire table render), 15-35s between different keywords/seeds.
+- **Launch pattern — always headed, always with anti-detection args**:
+  ```js
+  chromium.launchPersistentContext(activeProfileDir(), {
+    headless: false, viewport: null,
+    args: ['--disable-blink-features=AutomationControlled', '--no-first-run', '--no-default-browser-check'],
+    ignoreDefaultArgs: ['--enable-automation'],
+  });
+  ```
+  `headless: true` and/or omitting these args is a detectable bot fingerprint —
+  believed to be a direct contributing cause of the 2026-07-08 block (see below).
+- **Circuit breaker**: max 12 live lookups/hour, 40/day, persisted to disk at
+  `data/cache/pinclicks/_breaker.json` (fixed 2026-07-08 — it used to be in-memory
+  only, which reset to a fresh budget every single agent run since the MCP server is
+  a new process each time; several separate runs could each burn their own "full"
+  budget with no shared awareness). On a detected block, it writes a 24h cooldown to
+  that same file — respected by every future run, not just the one that got blocked.
+- **Per-keyword cache**: 3-day TTL, so repeat scans of the same keyword don't cost a
+  live lookup at all.
+- **Block detection** (`looksBlocked()`): checks page title/URL for
+  "just a moment" / "attention required" / "cloudflare" / "challenge" / "blocked".
+
+## What actually happened — 2026-07-08 real incident (read this before touching PinClicks)
+
+An ad-hoc exploration script was written directly against `pinclicks.com` (bypassing
+`pinclicks.js` entirely) to investigate the "open a pin" feature above. It used
+`headless: true` and omitted the anti-detection launch args — an immediate deviation
+from the safe pattern. It hit a real Cloudflare "Sorry, you have been blocked" page
+on the first navigation.
+
+To recover, a brand-new, never-before-used browser profile was created and a slow,
+human-paced login was attempted (headed this time, but still without the full
+anti-detection arg set) using the stored credentials. **It hit the identical block
+page, on the login page itself, within minutes** — on the same network.
+
+Conclusions:
+1. This can be an **IP-level Cloudflare block**, not purely per-profile/cookie. "Add
+   a fresh profile" is NOT a reliable fix and the code/skill previously said it was —
+   corrected in commit `abbb52d`.
+2. `headless: true` + missing anti-detection args is a real, independent risk factor
+   — always match the exact safe launch pattern above, never a shortcut.
+3. Once blocked, retrying — even "more carefully" — within the same short window did
+   NOT work. The right response to `blocked: true` is STOP completely and wait (or
+   change network), not iterate on technique hoping to slip through.
+4. The circuit breaker persistence fix (above) exists specifically so this can't
+   repeat silently across separate agent runs.
+
+## If you see `blocked: true`
+
+STOP. Do not retry. Do not open a fresh profile as a workaround. Tell the user
+plainly: this may be an IP-level block, the safe move is to wait out the cooldown
+(or try from a different network if that's genuinely available), and that retrying
+makes it more likely to extend the block, not less.
+
+## Researched pacing context (general Cloudflare behavior, not PinClicks-specific —
+no official PinClicks rate-limit docs exist since it has no public API)
+
+Cloudflare's own WAF docs suggest ~4-5 requests/minute is a common threshold before
+a Managed Challenge fires on sensitive/dynamic endpoints (login-like or
+search-triggering actions), vs. 20-100/min for static page views. PinClicks searches
+are dynamic/server-rendered (Livewire), closer to the sensitive end. The existing
+15-35s per-action pacing works out to roughly 1.7-4 actions/minute during an active
+burst — already at or under that threshold. There is no reason to speed this up;
+if anything, err slower, not faster, especially right after any recent block.
