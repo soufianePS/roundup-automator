@@ -115,6 +115,74 @@ export function timingFromMoment(m, today = new Date()) {
   return { seasonal_timing: score, publish_by: verdict.split(':')[0] === 'PRIME' ? 'start now' : verdict, verdict, days_to_peak: daysToPeak, shape, source: 'pinterest_moments' };
 }
 
+/**
+ * "Catch it before it rises" — reads a real weekly interest curve (from
+ * fetchCurves' /metrics/ data) and finds the exact bend where a flat/low line
+ * just started curling upward, before it becomes the steep climb. This is the
+ * per-keyword equivalent of timingFromMoment, but works for ANY term (not just
+ * named holidays) since it reads the term's own real curve instead of a
+ * category-level moment match.
+ *
+ * counts: [{date, normalizedCount}] ascending by date, ideally the FULL ~52wk
+ * history fetchCurves returns (not just the tail) — the true reference peak
+ * for "how far already risen" must come from last cycle's real high, not from
+ * a short trailing window that's contaminated by the very rise being measured.
+ */
+export function detectLiftoff(counts) {
+  const pts = (counts || []).filter(c => c && c.normalizedCount != null);
+  if (pts.length < 6) return { status: 'insufficient_data' };
+  const vals = pts.map(p => p.normalizedCount);
+  const n = vals.length;
+  const longTermPeak = Math.max(...vals); // full-history high (last cycle's real peak)
+  const currentVal = vals[n - 1];
+  // Below this, the index is basically 0/1/2 noise — too little signal to read a
+  // shape from at all (e.g. thanksgiving in July: 0,0,0,1,1,1 is not a "rise").
+  if (longTermPeak < 5) return { status: 'flat', currentVal, recentMax: longTermPeak, weeksIntoRise: 0, lowSignal: true };
+
+  // Walk back over the trailing window to find where the current non-decreasing
+  // run started (15% noise tolerance so one wobbly week doesn't break the streak).
+  const win = Math.min(n, 16);
+  const floor = n - win;
+  let i = n - 1;
+  while (i > floor && vals[i] >= vals[i - 1] * 0.85) i--;
+  const weeksIntoRise = n - 1 - i;
+  const streakStartVal = vals[i];
+  const risePct = currentVal / longTermPeak;
+  // A "rise" must be a real, meaningful net increase — not equal/flat values
+  // passing the noise tolerance (a 6wk plateau at 3,3,3,3,3,3 is FLAT, not
+  // rising), and not a 0→1 blip near the floor (needs an absolute delta too).
+  const netRise = streakStartVal > 0 ? currentVal / streakStartVal : (currentVal > 0 ? Infinity : 1);
+  const absDelta = currentVal - streakStartVal;
+  const meaningfulRise = weeksIntoRise >= 2 && netRise >= 1.3 && absDelta >= Math.max(2, longTermPeak * 0.05);
+
+  let status;
+  if (!meaningfulRise) status = currentVal < vals[n - 2] * 0.9 ? 'declining' : 'flat';
+  else if (risePct >= 0.85) status = 'near_peak';
+  else if (weeksIntoRise <= 4 && risePct <= 0.4) status = 'liftoff';
+  else status = 'rising';
+
+  return { status, currentVal, recentMax: longTermPeak, risePct: +risePct.toFixed(2), weeksIntoRise, streakStartVal, startDate: pts[i]?.date, latestDate: pts[n - 1]?.date };
+}
+
+/** Turns detectLiftoff()'s raw numbers into the same kind of verdict string timingFromMoment produces. */
+export function liftoffVerdict(term, liftoff) {
+  const l = liftoff;
+  if (!l || l.status === 'insufficient_data') return `NO CURVE DATA: not enough history for "${term}" — fall back to smart_timing`;
+  switch (l.status) {
+    case 'liftoff':
+      return `LIFTOFF: "${term}" just bent upward ${l.weeksIntoRise}wk ago (${l.streakStartVal}→${l.currentVal}, still only ${Math.round(l.risePct * 100)}% of its recent high) — catch it now, before the climb`;
+    case 'rising':
+      return `MID-RISE: "${term}" has been climbing ${l.weeksIntoRise}wk (${l.streakStartVal}→${l.currentVal}, ${Math.round(l.risePct * 100)}% of high) — still winnable but past the earliest catch point`;
+    case 'near_peak':
+      return `NEAR PEAK: "${term}" is at ${Math.round(l.risePct * 100)}% of its recent high — the early window already passed`;
+    case 'declining':
+      return `DECLINING: "${term}" fell last week (${l.currentVal} vs recent high ${l.recentMax}) — likely past its cycle`;
+    case 'flat':
+    default:
+      return `FLAT: "${term}" hasn't bent upward yet (steady around ${l.currentVal}) — no liftoff signal, keep watching or use category timing instead`;
+  }
+}
+
 /** Post type from phrasing (SERP still overrides later). */
 export function classifyPostType(keyword) {
   const k = String(keyword || '').toLowerCase();

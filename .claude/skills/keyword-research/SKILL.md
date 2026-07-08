@@ -83,7 +83,8 @@ Workflow:
    as needed to find ALL the genuinely winnable ones under that trend — this varies
    per trend: could be 1, could be 4+. Don't artificially cap it to match N or force
    exactly one per trend; also don't blow the whole live budget on one trend if others
-   still need checking. Then `smart_timing` for the real publish window.
+   still need checking. Then `trend_curves([keyword])` for the real publish window
+   (fall back to `smart_timing` only if it returns insufficient data).
 4. Save EVERY winnable title with `save_keyword_score`. `parent_trend` is now a
    **required** field (the tool call fails without it) — set it to the EXACT term
    `harvest_trends` returned (or the exact seed you passed to `pinclicks_export_seeds`),
@@ -241,8 +242,11 @@ windows of LAST YEAR matching +30..+90 days from today (cyclical prediction).
   normalizedCount (relative demand), wow/mom/yoy % change, seasonality score, and
   **weeksSeen** (how many weekly windows it appeared in — persistence across weeks =
   real recurring seasonal demand; 1 week = possible one-off).
-- Then `trend_curves({terms: [...]})` for your shortlist → exact current curve points
-  (+ crystal-ball predictions where available) — again no browser.
+- Then `trend_curves({terms: [...]})` for your shortlist → the REAL weekly interest
+  curve (+ crystal-ball predictions where available) and a `liftoff` verdict per term
+  ("just bent upward, catch it now" vs "already mid-rise" vs "flat, no signal yet") —
+  again no browser. This is your primary timing signal — see the seasonalTiming
+  section below.
 - `list_trend_categories` shows valid category names.
 - **Caveat:** these tools need the research profile free. If YOUR playwright browser
   is open, `browser_close` first. If they error anyway, fall back to browsing
@@ -383,19 +387,27 @@ Each sub-signal is 0–1:
     = high (0.8–1.0), because it promises more than one image can show — a genuine
     curiosity gap. Pure aesthetic/mood terms ("cozy fall aesthetic", "dream living
     room") = low (0.2–0.4): people save the picture and never click.
-- **seasonalTiming** — DON'T guess this. Call **`smart_timing(keyword, peak_month)`**
-  and use its `seasonal_timing` + `publish_by` verbatim. It first tries to match the
-  keyword against **Pinterest's own named-moment calendar** (real takeoff/peak dates +
-  shape, fetched live) — e.g. peach/zucchini/produce → "summer", pumpkin/spooky →
-  "halloween". When matched you get REAL dates and a **shape**: `spike` (narrow window,
-  Halloween/New-Year-like — miss the lift-off and it's gone) vs `hump` (wide window,
-  produce/summer-like — still pays off well into the rise) vs `medium`. No match →
-  falls back to the peak-month heuristic (`compute_timing`) automatically. It anchors
-  on LIFT-OFF (must publish BEFORE that), so it correctly scores a term whose peak is
-  <45 days out as LATE ("missed — queue for next year"), not "start now". Example: in
-  July, an August-peak topic (summer produce) → 0.25 MISSED; an October-peak topic
-  (fall decor) → 1.0 prime. This is the fix for the peach/zucchini
-  mistake — never mark a topic "start now" when its peak is already <45 days away.
+- **seasonalTiming** — DON'T guess this. Two sources, in this order of preference:
+  1. **`trend_curves([keyword, ...])` (PREFERRED)** — reads that exact keyword's REAL
+     weekly interest curve (the same data as the graph on trends.pinterest.com) and
+     returns a `liftoff` verdict per term: `LIFTOFF` = the line just bent upward from a
+     flat/low bottom, still under ~40% of its last-cycle peak — this is the "catch it
+     before it rises" moment, publish now. `MID-RISE`/`NEAR_PEAK` = already climbing,
+     the earliest window has passed but it can still be winnable. `FLAT` = no bend yet,
+     keep watching. `DECLINING` = past its cycle. Use `liftoff_verdict` as `publish_by`
+     verbatim. This works for ANY keyword (not just named holidays) because it's that
+     term's own real curve — always try this first on your final shortlist.
+  2. **`smart_timing(keyword, peak_month)` (FALLBACK)** — use only when `trend_curves`
+     returns `insufficient_data` or `lowSignal` for that term (too little history to
+     read a shape). It first tries to match the keyword against **Pinterest's own
+     named-moment calendar** (real takeoff/peak dates + shape) — e.g. peach/zucchini →
+     "summer", pumpkin/spooky → "halloween" — with a **shape**: `spike` (narrow window,
+     miss the lift-off and it's gone) vs `hump` (wide window, still pays off well into
+     the rise) vs `medium`. No match → falls back further to the peak-month heuristic
+     (`compute_timing`). It anchors on LIFT-OFF (must publish BEFORE that), so a term
+     whose peak is <45 days out scores LATE ("missed — queue for next year"), not
+     "start now". This is the fix for the peach/zucchini mistake — never mark a topic
+     "start now" when its peak is already <45 days away.
 - **momentum** — Trends 30-day curve rising (a whole related cluster rising = high).
 - **fit** — thematic coherence to a site category (Pinterest scores image↔title↔board↔
   landing-page consistency; incoherence gets suppressed, so only keep on-theme picks).
@@ -458,16 +470,18 @@ annotations, top_pin_saves, search_volume, trend_points, source_notes}`.
   winner in this SERP actually earns — record it.
 - **`search_volume`** (number): the raw PinClicks volume figure (order-of-magnitude).
 - **`trend_points`** (array of ~12 numbers, 0–100): the last-12-months relative-interest
-  values off the Pinterest Trends curve, so the dashboard can draw a sparkline. Read them
-  off the graph as best you can (approximate is fine); omit if you truly can't.
+  values off the Pinterest Trends curve, so the dashboard can draw a sparkline. Use the
+  REAL `counts` (normalizedCount per week) from `trend_curves` — take the last ~12
+  values, don't estimate/eyeball; omit only if `trend_curves` returned no data for it.
 - `opportunity_score` is what the dashboard shows as the **viral-potential %** — make it
   honest and **on a 0–100 scale** (e.g. 62, NOT 0.62 — remember the `round(100 * …)` in
   the formula; saving a 0–1 fraction is a bug).
 - `peak_month`: the month demand peaks (e.g. "November"), or "year-round" for evergreen.
-- `seasonal_timing` + `publish_by`: take BOTH from `smart_timing(keyword, peak_month)` —
-  do not hand-write them. If it returns a LATE/MISSED verdict, either drop the topic
-  (past its window) or keep it only with the honest "queue for next year" publish_by; never label a
-  past-lift-off topic "start now".
+- `seasonal_timing` + `publish_by`: take BOTH from `trend_curves`' `liftoff`/
+  `liftoff_verdict` (preferred), or `smart_timing(keyword, peak_month)` if that term had
+  insufficient curve data — do not hand-write them. If the verdict is LATE/MISSED/
+  DECLINING, either drop the topic (past its window) or keep it only with the honest
+  "queue for next year" publish_by; never label a past-lift-off topic "start now".
 Put a one-line note in `source_notes` on what you saw AND the timing verdict, e.g.
 "Trends 78, rising cluster, peaks Nov → publish by ~mid-Sep; PinClicks vol solid,
 small blogs ranking, low competition".

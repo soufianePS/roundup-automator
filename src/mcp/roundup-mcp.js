@@ -25,7 +25,7 @@ import { probePinterestAccount } from '../shared/pinterest-probe.js';
 import { harvestTrends, fetchCurves, weeklyWindowsLastYear, INTEREST_IDS, fetchMoments, matchMoment } from '../shared/trends-api.js';
 import { enrichKeywords } from '../shared/pinclicks.js';
 import { exportSeeds } from '../shared/pinclicks-export.js';
-import { buildShortlist, seasonalTiming, timingFromMoment, trendTitles } from '../shared/keyword-scoring.js';
+import { buildShortlist, seasonalTiming, timingFromMoment, trendTitles, detectLiftoff, liftoffVerdict } from '../shared/keyword-scoring.js';
 import { secretOpt } from '../config.js';
 import { Logger } from '../shared/logger.js';
 
@@ -77,8 +77,8 @@ server.tool('set_topic_status', 'Update a topic\'s status (e.g. pending → in_p
 const BARE_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 function validatePublishBy(publish_by) {
   const v = String(publish_by || '').trim();
-  if (!v) return 'publish_by is empty. Call smart_timing(keyword, peak_month) first and use its publish_by/verdict verbatim.';
-  if (BARE_DATE_RE.test(v)) return `publish_by ("${v}") looks like a bare date, not a timing verdict — you likely skipped smart_timing. Call smart_timing(keyword, peak_month) and use its actual publish_by/verdict text (e.g. "start now — by Jul 17, 2026" or "MISSED this cycle — queue for ~May 2027").`;
+  if (!v) return 'publish_by is empty. Call trend_curves([keyword]) first (preferred — real per-keyword curve) or smart_timing(keyword, peak_month) as fallback, and use its verdict text verbatim.';
+  if (BARE_DATE_RE.test(v)) return `publish_by ("${v}") looks like a bare date, not a timing verdict — you likely skipped the real timing check. Call trend_curves([keyword]) and use its liftoff_verdict, or smart_timing(keyword, peak_month) if trend_curves has insufficient data, and use that verdict text (e.g. "LIFTOFF: ... catch it now" or "MISSED this cycle — queue for ~May 2027").`;
   return null;
 }
 
@@ -203,9 +203,16 @@ server.tool('harvest_trends',
   }));
 
 server.tool('trend_curves',
-  'Fetch current 12-month interest curves (weekly points + crystal-ball predictions where available) for up to ~25 terms at once, via the Trends network API (~2s). Use AFTER harvest_trends to read exact curve shape/timing for your shortlist without opening the browser. Same profile-free requirement as harvest_trends.',
+  'Fetch the REAL weekly interest-over-time curve (same data as the graph on trends.pinterest.com) for up to ~25 terms at once, via the Trends network API (~2s, no browser clicking). Each result includes a `liftoff` verdict: LIFTOFF (the line just bent upward from a flat/low bottom — the exact "catch it before it rises" moment, publish now), MID-RISE/NEAR_PEAK (already climbing, past the earliest catch point), FLAT (no bend yet), or DECLINING. Use this on your FINAL shortlist (not the whole harvest_trends list) as the primary timing signal — it is far more precise than smart_timing for terms with no named-moment match, because it reads that exact keyword\'s own curve, not a category guess. Feed the `counts` (last ~12 points) into save_keyword_score\'s `trend_points`.',
   { terms: z.array(z.string()).min(1).max(50) },
-  wrap(async ({ terms }) => fetchCurves(terms)));
+  wrap(async ({ terms }) => {
+    const rows = await fetchCurves(terms);
+    return rows.map(r => {
+      const historical = (r.counts || []).filter(c => c.predictedUpperBoundNormalizedCount == null);
+      const liftoff = detectLiftoff(historical);
+      return { term: r.term, growth_rates: r.growth_rates, has_prediction: r.has_prediction, counts: r.counts, liftoff, liftoff_verdict: liftoffVerdict(r.term, liftoff) };
+    });
+  }));
 
 server.tool('list_trend_categories', 'List the valid Pinterest Trends interest/category names usable with harvest_trends.', {},
   wrap(() => Object.keys(INTEREST_IDS)));

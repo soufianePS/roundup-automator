@@ -250,24 +250,49 @@ export function matchMoment(keyword, moments) {
   return null;
 }
 
-export async function fetchCurves(termList, { country = 'US' } = {}) {
+// /metrics/ (the real weekly interest-over-time curve, same data as the visual
+// graph on trends.pinterest.com) rejects plain ctx.request calls with 400 — it
+// needs the same in-page fetch + x-pinterest-*/x-b3-* header set as fetchMoments,
+// PLUS a real end_date (today's data isn't published yet — use /latest_available_date/).
+// Confirmed working 2026-07 for ARBITRARY keywords, not just Pinterest's own
+// featured terms, up to 25 terms per call.
+export async function fetchCurves(termList, { country = 'US', days = 365, force = false } = {}) {
   if (!termList?.length) return [];
-  const api = await openApi();
+  const key = createHash('sha1').update(JSON.stringify({ termList: [...termList].sort(), country, days })).digest('hex').slice(0, 16);
+  if (!force) {
+    const hit = cacheGet(`curves-${key}`, CACHE_TTL_MS);
+    if (hit) return hit.data;
+  }
+  const ctx = await chromium.launchPersistentContext(activeProfileDir(), { headless: true });
+  const rnd = () => [...Array(16)].map(() => Math.floor(Math.random() * 16).toString(16)).join('');
   try {
+    const page = ctx.pages()[0] || await ctx.newPage();
+    await page.goto(`${BASE}/?country=${country}`, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
     const out = [];
     for (let i = 0; i < termList.length; i += 25) {
       const batch = termList.slice(i, i + 25);
       try {
-        const j = await api.get('/metrics/', { terms: batch.join(','), country });
-        for (const k of Object.keys(j)) out.push(j[k]);
+        const j = await page.evaluate(async ({ base, batch, country, days, traceId, spanId }) => {
+          const dateRes = await fetch(`${base}/latest_available_date/`, { headers: { accept: 'application/json' } });
+          const { date } = await dateRes.json();
+          const url = `${base}/metrics/?terms=${encodeURIComponent(batch.join(','))}&country=${country}&end_date=${date}&days=${days}&aggregation=2&normalize_against_group=false&predicted_days=28`;
+          const r = await fetch(url, { headers: {
+            accept: 'application/json', 'x-requested-with': 'XMLHttpRequest',
+            'x-pinterest-source-url': `/?country=${country}`, 'x-pinterest-appstate': 'active',
+            'x-pinterest-pws-handler': 'trends/index.js',
+            'x-b3-traceid': traceId, 'x-b3-spanid': spanId, 'x-b3-flags': '0',
+          } });
+          if (r.status !== 200) throw new Error(`metrics fetch ${r.status}`);
+          return r.json();
+        }, { base: BASE, batch, country, days, traceId: rnd(), spanId: rnd().slice(0, 16) });
+        out.push(...(Array.isArray(j) ? j : []));
       } catch (e) {
-        // The /metrics/ endpoint needs in-page headers we can't forge from ctx.request
-        // (often 400s). Non-fatal — curves/sparkline are cosmetic; harvest metrics suffice.
         Logger.warn(`[trends-api] curves batch skipped: ${e.message}`);
       }
     }
+    cachePut(`curves-${key}`, out);
     return out;
   } finally {
-    await api.close();
+    await ctx.close();
   }
 }
