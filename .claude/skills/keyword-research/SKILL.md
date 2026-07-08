@@ -243,9 +243,9 @@ windows of LAST YEAR matching +30..+90 days from today (cyclical prediction).
   **weeksSeen** (how many weekly windows it appeared in — persistence across weeks =
   real recurring seasonal demand; 1 week = possible one-off).
 - Then `trend_curves({terms: [...]})` for your shortlist → the REAL weekly interest
-  curve (+ crystal-ball predictions where available) and a `liftoff` verdict per term
-  ("just bent upward, catch it now" vs "already mid-rise" vs "flat, no signal yet") —
-  again no browser. This is your primary timing signal — see the seasonalTiming
+  curve, a live `liftoff` status, a `predicted` forecast from last cycle (when to
+  start writing so the pin is indexed BEFORE the next rise, not after), and a merged
+  `verdict` — again no browser. This is your primary timing signal — see seasonalTiming
   section below.
 - `list_trend_categories` shows valid category names.
 - **Caveat:** these tools need the research profile free. If YOUR playwright browser
@@ -389,17 +389,21 @@ Each sub-signal is 0–1:
     room") = low (0.2–0.4): people save the picture and never click.
 - **seasonalTiming** — DON'T guess this. Two sources, in this order of preference:
   1. **`trend_curves([keyword, ...])` (PREFERRED)** — reads that exact keyword's REAL
-     weekly interest curve (the same data as the graph on trends.pinterest.com) and
-     returns a `liftoff` verdict per term: `LIFTOFF` = the line just bent upward from a
-     flat/low bottom, still under ~40% of its last-cycle peak — this is the "catch it
-     before it rises" moment, publish now. `MID-RISE`/`NEAR_PEAK` = already climbing,
-     the earliest window has passed but it can still be winnable. `FLAT` = no bend yet,
-     keep watching. `DECLINING` = past its cycle. Use `liftoff_verdict` as `publish_by`
-     verbatim. This works for ANY keyword (not just named holidays) because it's that
-     term's own real curve — always try this first on your final shortlist.
+     weekly interest curve (the same data as the graph on trends.pinterest.com, 2 years
+     of history) and returns THREE things per term: `liftoff` (this YEAR's confirmed
+     live signal — LIFTOFF/RISING/NEAR_PEAK/FLAT/DECLINING), `predicted` (a FORECAST
+     from LAST cycle's curve — projects when the next bend should happen and
+     recommends starting ~30 days before it, so the pin is already indexed BEFORE the
+     rise hits — don't wait for live confirmation, that's already reacting late), and
+     `verdict` (the one to actually use — reconciles the two: trusts live confirmation
+     when something is already visibly moving, falls back to the historical forecast
+     when live is still flat/quiet so you're not caught reacting after the fact). Use
+     `verdict` as `publish_by` verbatim. Works for ANY keyword (not just named
+     holidays) because it reads that term's own real curve — always try this first.
   2. **`smart_timing(keyword, peak_month)` (FALLBACK)** — use only when `trend_curves`
-     returns `insufficient_data` or `lowSignal` for that term (too little history to
-     read a shape). It first tries to match the keyword against **Pinterest's own
+     returns `insufficient_data`/`lowSignal` (live) and `insufficient_history`/
+     `no_clear_cycle` (predicted) for that term — too little curve data to read a shape
+     at all. It first tries to match the keyword against **Pinterest's own
      named-moment calendar** (real takeoff/peak dates + shape) — e.g. peach/zucchini →
      "summer", pumpkin/spooky → "halloween" — with a **shape**: `spike` (narrow window,
      miss the lift-off and it's gone) vs `hump` (wide window, still pays off well into
@@ -477,10 +481,11 @@ annotations, top_pin_saves, search_volume, trend_points, source_notes}`.
   honest and **on a 0–100 scale** (e.g. 62, NOT 0.62 — remember the `round(100 * …)` in
   the formula; saving a 0–1 fraction is a bug).
 - `peak_month`: the month demand peaks (e.g. "November"), or "year-round" for evergreen.
-- `seasonal_timing` + `publish_by`: take BOTH from `trend_curves`' `liftoff`/
-  `liftoff_verdict` (preferred), or `smart_timing(keyword, peak_month)` if that term had
-  insufficient curve data — do not hand-write them. If the verdict is LATE/MISSED/
-  DECLINING, either drop the topic (past its window) or keep it only with the honest
+- `seasonal_timing` + `publish_by`: take BOTH from `trend_curves`' `verdict` (preferred
+  — already reconciles live vs predicted), or `smart_timing(keyword, peak_month)` if
+  that term had insufficient curve data — do not hand-write them. If the verdict is
+  LATE/MISSED/DECLINING/NEAR PEAK, either drop the topic (past its window) or keep it
+  only with the honest
   "queue for next year" publish_by; never label a past-lift-off topic "start now".
 Put a one-line note in `source_notes` on what you saw AND the timing verdict, e.g.
 "Trends 78, rising cluster, peaks Nov → publish by ~mid-Sep; PinClicks vol solid,

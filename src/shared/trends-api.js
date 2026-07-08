@@ -256,7 +256,10 @@ export function matchMoment(keyword, moments) {
 // PLUS a real end_date (today's data isn't published yet — use /latest_available_date/).
 // Confirmed working 2026-07 for ARBITRARY keywords, not just Pinterest's own
 // featured terms, up to 25 terms per call.
-export async function fetchCurves(termList, { country = 'US', days = 365, force = false } = {}) {
+// 2 years by default (not 1) — predictLiftoffFromHistory needs a full prior
+// trough visible BEFORE last cycle's rise to find where it truly began; a
+// 365-day window often cuts off mid-rise with no trough in view at all.
+export async function fetchCurves(termList, { country = 'US', days = 730, force = false } = {}) {
   if (!termList?.length) return [];
   const key = createHash('sha1').update(JSON.stringify({ termList: [...termList].sort(), country, days })).digest('hex').slice(0, 16);
   if (!force) {

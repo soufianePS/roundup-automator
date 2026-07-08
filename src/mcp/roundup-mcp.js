@@ -25,7 +25,7 @@ import { probePinterestAccount } from '../shared/pinterest-probe.js';
 import { harvestTrends, fetchCurves, weeklyWindowsLastYear, INTEREST_IDS, fetchMoments, matchMoment } from '../shared/trends-api.js';
 import { enrichKeywords } from '../shared/pinclicks.js';
 import { exportSeeds } from '../shared/pinclicks-export.js';
-import { buildShortlist, seasonalTiming, timingFromMoment, trendTitles, detectLiftoff, liftoffVerdict } from '../shared/keyword-scoring.js';
+import { buildShortlist, seasonalTiming, timingFromMoment, trendTitles, detectLiftoff, liftoffVerdict, predictLiftoffFromHistory, predictedLiftoffVerdict, combinedTimingVerdict } from '../shared/keyword-scoring.js';
 import { secretOpt } from '../config.js';
 import { Logger } from '../shared/logger.js';
 
@@ -203,14 +203,19 @@ server.tool('harvest_trends',
   }));
 
 server.tool('trend_curves',
-  'Fetch the REAL weekly interest-over-time curve (same data as the graph on trends.pinterest.com) for up to ~25 terms at once, via the Trends network API (~2s, no browser clicking). Each result includes a `liftoff` verdict: LIFTOFF (the line just bent upward from a flat/low bottom — the exact "catch it before it rises" moment, publish now), MID-RISE/NEAR_PEAK (already climbing, past the earliest catch point), FLAT (no bend yet), or DECLINING. Use this on your FINAL shortlist (not the whole harvest_trends list) as the primary timing signal — it is far more precise than smart_timing for terms with no named-moment match, because it reads that exact keyword\'s own curve, not a category guess. Feed the `counts` (last ~12 points) into save_keyword_score\'s `trend_points`.',
-  { terms: z.array(z.string()).min(1).max(50) },
-  wrap(async ({ terms }) => {
+  'Fetch the REAL weekly interest-over-time curve (same data as the graph on trends.pinterest.com, 2 years so a full prior cycle is visible) for up to ~25 terms at once, via the Trends network API (~2-4s, no browser clicking). Each result includes: `liftoff` (this YEAR\'s confirmed live signal: LIFTOFF/RISING/NEAR_PEAK/FLAT/DECLINING), `predicted` (a FORECAST from LAST cycle\'s curve — projects when the next bend should happen and recommends starting ~30 days before it, so the pin is indexed before the rise hits, instead of reacting after it\'s already visible), and `verdict` (the one to actually use — reconciles the two: trusts live confirmation when something is already moving, falls back to the historical forecast when live is still flat/quiet). Use this on your FINAL shortlist (not the whole harvest_trends list) as the primary timing signal. Feed the `counts` (last ~12 points) into save_keyword_score\'s `trend_points`.',
+  { terms: z.array(z.string()).min(1).max(50), leadDays: z.number().int().optional().describe('Days of indexing lead time to recommend before the predicted liftoff (default 30).') },
+  wrap(async ({ terms, leadDays }) => {
     const rows = await fetchCurves(terms);
     return rows.map(r => {
       const historical = (r.counts || []).filter(c => c.predictedUpperBoundNormalizedCount == null);
       const liftoff = detectLiftoff(historical);
-      return { term: r.term, growth_rates: r.growth_rates, has_prediction: r.has_prediction, counts: r.counts, liftoff, liftoff_verdict: liftoffVerdict(r.term, liftoff) };
+      const predicted = predictLiftoffFromHistory(r.counts, { leadDays: leadDays ?? 30 });
+      return {
+        term: r.term, growth_rates: r.growth_rates, has_prediction: r.has_prediction, counts: r.counts.slice(-16),
+        liftoff, predicted,
+        verdict: combinedTimingVerdict(r.term, liftoff, predicted),
+      };
     });
   }));
 

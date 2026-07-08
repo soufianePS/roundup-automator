@@ -183,6 +183,124 @@ export function liftoffVerdict(term, liftoff) {
   }
 }
 
+const DAY_MS = 86400000;
+
+/**
+ * PROACTIVE version of detectLiftoff — instead of waiting to confirm the bend
+ * live (which by definition means the rise has already started), look at
+ * LAST CYCLE's curve for this same keyword, find when IT bent upward, project
+ * that date forward one year, and recommend starting `leadDays` before that
+ * projected date — so the pin is already indexed by Pinterest before the real
+ * rise hits, instead of racing to catch up after it's visibly moving.
+ *
+ * counts: the FULL ~52-53wk historical series from trend_curves (not sliced) —
+ * needs a full year of history to find last cycle's bend at all.
+ */
+export function predictLiftoffFromHistory(counts, { leadDays = 30, today = new Date() } = {}) {
+  const pts = (counts || []).filter(c => c && c.normalizedCount != null && c.predictedUpperBoundNormalizedCount == null);
+  if (pts.length < 30) return { status: 'insufficient_history' };
+  const vals = pts.map(p => p.normalizedCount);
+  const n = vals.length;
+  // Search for the peak within the MOST RECENT completed cycle only (last
+  // ~70wk, excluding the last ~8wk which may still be forming) — NOT the
+  // global max across the whole window. The global max biases toward
+  // whichever cycle is oldest/edge-adjacent in the fetched range, which is
+  // exactly the cycle most likely to have its trough cut off by the window
+  // boundary. The recent cycle's trough sits comfortably mid-window instead.
+  const searchEnd = Math.max(0, n - 8);
+  const searchStart = Math.max(0, searchEnd - 70);
+  const window = vals.slice(searchStart, searchEnd);
+  const peakIdx = searchStart + window.indexOf(Math.max(...window));
+  if (vals[peakIdx] < 5) return { status: 'insufficient_history' }; // too little signal anywhere
+
+  // Walk back from last cycle's peak tracking the true running MINIMUM (not a
+  // ratio walk-back — that chains straight through a flat plateau, since an
+  // equal value always passes a ">= previous*0.85" check). Stop once the
+  // series climbs back out of the trough by a meaningful margin — that means
+  // we've walked past the true low point into the tail of the PREVIOUS cycle.
+  let minVal = vals[peakIdx], minIdx = peakIdx, j = peakIdx;
+  while (j > 0) {
+    j--;
+    if (vals[j] < minVal) { minVal = vals[j]; minIdx = j; }
+    else if (vals[j] > minVal * 1.2 && peakIdx - j >= 3) break;
+  }
+  const i = minIdx;
+  // Hitting the very start of our data is only a problem if the value THERE
+  // is already substantial (peak's rise clearly started before our window) —
+  // if it's already low/trough-like, it's a legitimate (maybe slightly
+  // truncated) start, not missing data.
+  if (i === 0 && vals[0] > vals[peakIdx] * 0.3) return { status: 'incomplete_history' };
+  if (peakIdx - i < 1 || vals[peakIdx] < vals[i] * 1.3) return { status: 'no_clear_cycle' };
+
+  const liftoffDateLastCycle = new Date(pts[i].date + 'T00:00:00Z');
+  const projected = new Date(liftoffDateLastCycle.getTime() + 365 * DAY_MS);
+  const recommendedStart = new Date(projected.getTime() - leadDays * DAY_MS);
+  const daysUntilStart = Math.round((recommendedStart - today) / DAY_MS);
+  const daysSinceProjectedLiftoff = Math.round((today - projected) / DAY_MS);
+
+  // Real trends drift a few weeks year to year — don't jump a whole year
+  // ahead just because we're slightly past the projected date. Only treat it
+  // as a fully missed cycle once we're well past a plausible drift window.
+  let status;
+  if (daysUntilStart > 0) status = 'queue';
+  else if (daysSinceProjectedLiftoff <= 45) status = 'start_now';
+  else status = 'missed';
+
+  if (status === 'missed') {
+    const rolled = new Date(projected.getTime() + 365 * DAY_MS);
+    const rolledStart = new Date(rolled.getTime() - leadDays * DAY_MS);
+    return { status, liftoffDateLastCycle: pts[i].date, projectedLiftoff: rolled.toISOString().slice(0, 10), recommendedStart: rolledStart.toISOString().slice(0, 10), daysUntilStart: Math.round((rolledStart - today) / DAY_MS), leadDays };
+  }
+  return {
+    status,
+    liftoffDateLastCycle: pts[i].date,
+    projectedLiftoff: projected.toISOString().slice(0, 10),
+    recommendedStart: recommendedStart.toISOString().slice(0, 10),
+    daysUntilStart,
+    leadDays,
+  };
+}
+
+/** Turns predictLiftoffFromHistory()'s numbers into a verdict string. */
+export function predictedLiftoffVerdict(term, pred) {
+  if (!pred) return null;
+  switch (pred.status) {
+    case 'start_now':
+      return `START NOW: "${term}" bent upward on ${pred.liftoffDateLastCycle} last cycle, projected to repeat ~${pred.projectedLiftoff} — you're already ${-pred.daysUntilStart}d past the recommended ${pred.leadDays}-day indexing lead time, publish now`;
+    case 'queue':
+      return `QUEUE: "${term}" bent upward on ${pred.liftoffDateLastCycle} last cycle, projected to repeat ~${pred.projectedLiftoff} — start writing by ${pred.recommendedStart} (${pred.daysUntilStart}d from now) so it's indexed ${pred.leadDays} days before it takes off`;
+    case 'missed':
+      return `MISSED THIS CYCLE: "${term}"'s projected repeat (~${new Date(new Date(pred.projectedLiftoff).getTime() - 365 * 86400000).toISOString().slice(0, 10)}) is well past — next window starts ~${pred.projectedLiftoff}, start writing by ${pred.recommendedStart}`;
+    case 'incomplete_history':
+      return `NO HISTORICAL BEND FOUND: "${term}" was already elevated at the start of the available year of data — can't see where last cycle's rise truly began; use the live liftoff signal instead`;
+    case 'no_clear_cycle':
+      return `NO CLEAR CYCLE: "${term}" doesn't show a sharp seasonal peak in the last year — treat as evergreen, use the live liftoff signal instead`;
+    case 'insufficient_history':
+    default:
+      return `NOT ENOUGH HISTORY: "${term}" has too little data to project from last cycle — use the live liftoff signal instead`;
+  }
+}
+
+/**
+ * The single verdict to actually use — reconciles the LIVE confirmed signal
+ * (detectLiftoff, ground truth from this year's actual data) with the
+ * PREDICTED signal (predictLiftoffFromHistory, a forecast from last cycle).
+ * Live wins whenever it shows real movement (liftoff/rising/near_peak/
+ * declining) — it's confirmed, not a projection. The historical prediction
+ * only matters when live shows nothing is happening yet (flat) — that's
+ * exactly when you need the forecast to know when to start watching/writing,
+ * instead of waiting to react after the rise is already visible.
+ */
+export function combinedTimingVerdict(term, live, predicted) {
+  if (live && ['liftoff', 'rising', 'near_peak', 'declining'].includes(live.status)) {
+    return liftoffVerdict(term, live);
+  }
+  if (predicted && ['start_now', 'queue', 'missed'].includes(predicted.status)) {
+    return predictedLiftoffVerdict(term, predicted);
+  }
+  return liftoffVerdict(term, live); // both quiet/unavailable — fall back to the live FLAT/insufficient message
+}
+
 /** Post type from phrasing (SERP still overrides later). */
 export function classifyPostType(keyword) {
   const k = String(keyword || '').toLowerCase();
