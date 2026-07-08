@@ -549,14 +549,19 @@ same bias forever.
   WINNABLE (or MAYBE and you'd otherwise keep it), you MUST either `save_keyword_score`
   it or explicitly say in your final summary why you chose not to (e.g. "redundant with
   #2's cluster", "same dish as X"). Do not just omit a good find from the output with no
-  trace — this has happened TWICE (a WINNABLE "fig recipes healthy" and later a WINNABLE
-  "homemade tomato sauce with fresh tomatoes", comp 0.25, both live-checked then silently
-  never saved or mentioned). **Concrete fix: call `save_keyword_score` IMMEDIATELY after
-  each `pinclicks_enrich` call returns a WINNABLE (or keep-worthy) verdict — right then,
-  one candidate at a time — instead of checking a whole batch first and deciding what to
-  save afterward from memory.** Batching the save decision to the end is exactly how a
-  good find gets lost. Track every candidate you live-check through to either an
-  immediate save or an explicit, stated reason for dropping it.
+  trace — this has happened THREE times now (a WINNABLE "fig recipes healthy"; later a
+  WINNABLE "homemade tomato sauce with fresh tomatoes", comp 0.25; then a whole trend
+  ("crockpot recipes") whose only WINNABLE result never got saved while the other trend
+  did) — all live-checked, all silently dropped. Wording alone hasn't fixed this, so
+  there's now a hard backstop:
+  1. `pinclicks_enrich` itself returns an `UNSAVED_WINNABLE_REMINDER` field the moment a
+     WINNABLE result comes back unsaved — act on it immediately, don't move to the next
+     keyword or trend first.
+  2. **`check_unsaved_winnables()` — call this before writing your final summary, every
+     single run, no exceptions.** It returns every WINNABLE keyword from this run that
+     was never saved. If it returns anything, that IS the bug happening right now — go
+     save those keywords (or state why not) before you write anything else. An empty
+     result is your proof the run is complete; do not skip this check.
 - **publish_by = the START date**, phrased concretely and actionably ("start now", "start
   by mid-August") — the dashboard shows it as the "Start working" cue, so make it a real
   go-signal, not just the peak month.

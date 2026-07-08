@@ -31,6 +31,16 @@ import { Logger } from '../shared/logger.js';
 
 getDb(); // ensure db + schema exist
 
+// Tracks WINNABLE pinclicks_enrich results not yet saved this run (this MCP
+// server process is spawned fresh per agent run, so this is naturally
+// scoped to one run — no session ID needed). Fixes a recurring real bug:
+// the agent finding a WINNABLE keyword and never calling save_keyword_score
+// for it (observed 3x — "fig recipes", "homemade tomato sauce", and
+// "easy game day food"/"healthy dump and go crockpot recipes" in the same
+// run). Wording-only fixes didn't hold across repeats — this makes the gap
+// impossible to miss instead of relying on the agent remembering.
+const pendingWinnables = new Map();
+
 // ── result helpers ──
 const ok = (obj) => ({ content: [{ type: 'text', text: typeof obj === 'string' ? obj : JSON.stringify(obj, null, 2) }] });
 const fail = (e) => ({ content: [{ type: 'text', text: `ERROR: ${e?.message || e}` }], isError: true });
@@ -108,8 +118,14 @@ server.tool('save_keyword_score',
   wrap((k) => {
     const err = validatePublishBy(k.publish_by);
     if (err) throw new Error(err);
+    pendingWinnables.delete(String(k.keyword).toLowerCase());
     return { id: KeywordScores.save(k) };
   }));
+
+server.tool('check_unsaved_winnables',
+  'SAFETY NET — call this before writing your final summary, every time, no exceptions. Returns any WINNABLE keywords from pinclicks_enrich this run that were never saved via save_keyword_score. If it returns any, you have a bug in progress: go save them right now (or dismiss deliberately with a stated reason), THEN write your summary — never end the run with pending items still listed here.',
+  {},
+  wrap(() => ({ count: pendingWinnables.size, pending: [...pendingWinnables.values()] })));
 
 server.tool('list_keyword_scores', 'Top researched keywords by opportunity score.',
   { limit: z.number().int().optional() },
@@ -303,7 +319,16 @@ server.tool('pinclicks_enrich',
     niche: z.enum(['recipe', 'home']).optional().describe('Save thresholds differ — recipes tolerate more saves (default "recipe").'),
     force: z.boolean().optional().describe('Bypass the 3-day per-keyword cache and re-look-up live (default false).'),
   },
-  wrap(async ({ keywords, max, withTopPins, niche, force }) => enrichKeywords(keywords, { max: max ?? 8, withTopPins: !!withTopPins, niche: niche || 'recipe', force: !!force })));
+  wrap(async ({ keywords, max, withTopPins, niche, force }) => {
+    const res = await enrichKeywords(keywords, { max: max ?? 8, withTopPins: !!withTopPins, niche: niche || 'recipe', force: !!force });
+    for (const r of res.results || []) {
+      if (r.verdict === 'WINNABLE') pendingWinnables.set(String(r.keyword).toLowerCase(), { keyword: r.keyword, competition: r.competition, foundAt: new Date().toISOString() });
+    }
+    if (pendingWinnables.size > 0) {
+      res.UNSAVED_WINNABLE_REMINDER = `⚠ ${pendingWinnables.size} WINNABLE keyword(s) found and not yet saved: ${[...pendingWinnables.values()].map(w => w.keyword).join(', ')}. Call save_keyword_score for EACH one now, before doing anything else — do not batch this for later, do not move to the next trend first.`;
+    }
+    return res;
+  }));
 
 // ─────────────────────────── Data / introspection (full visibility) ───────────────────────────
 server.tool('sql_query',
