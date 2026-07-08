@@ -24,16 +24,33 @@ const rand = (a, b) => a + Math.random() * (b - a);
 const KW_URL = 'https://app.pinclicks.com/keyword-explorer';
 
 // Circuit breaker — cap live PinClicks Top-Pins visits so a scan can't hammer it
-// into a Cloudflare block (both audits insisted). Process-wide, rolling hour/day.
-const LIVE = { hour: [], day: [], blockedUntil: 0, MAX_HOUR: 12, MAX_DAY: 40, COOLDOWN_MS: 24 * 3600 * 1000 };
-function liveBudgetLeft(now) {
-  if (now < LIVE.blockedUntil) return 0;
-  LIVE.hour = LIVE.hour.filter(t => now - t < 3600e3);
-  LIVE.day = LIVE.day.filter(t => now - t < 86400e3);
-  return Math.min(LIVE.MAX_HOUR - LIVE.hour.length, LIVE.MAX_DAY - LIVE.day.length);
+// into a Cloudflare block (both audits insisted). MUST be disk-persisted, not just
+// in-memory: the MCP server is a FRESH process per agent run, so an in-memory-only
+// counter resets to a full budget every single run — several separate runs within
+// the same hour can each think they have 12 fresh lookups, and a real block's 24h
+// cooldown wouldn't carry over to the very next run either. Confirmed as the likely
+// cause of a real block (2026-07-08): two agent runs + one ad-hoc script each used
+// their own "fresh" budget back to back.
+const BREAKER_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'data', 'cache', 'pinclicks');
+const BREAKER_FILE = join(BREAKER_DIR, '_breaker.json');
+function loadBreaker() {
+  try { return JSON.parse(readFileSync(BREAKER_FILE, 'utf8')); }
+  catch { return { hour: [], day: [], blockedUntil: 0 }; }
 }
-function liveTick(now) { LIVE.hour.push(now); LIVE.day.push(now); }
-function tripBreaker(now) { LIVE.blockedUntil = now + LIVE.COOLDOWN_MS; }
+function saveBreaker(b) {
+  try { mkdirSync(BREAKER_DIR, { recursive: true }); writeFileSync(BREAKER_FILE, JSON.stringify(b)); } catch {}
+}
+const LIVE = { MAX_HOUR: 12, MAX_DAY: 40, COOLDOWN_MS: 24 * 3600 * 1000 };
+function liveBudgetLeft(now) {
+  const b = loadBreaker();
+  if (now < b.blockedUntil) return 0;
+  b.hour = b.hour.filter(t => now - t < 3600e3);
+  b.day = b.day.filter(t => now - t < 86400e3);
+  saveBreaker(b);
+  return Math.min(LIVE.MAX_HOUR - b.hour.length, LIVE.MAX_DAY - b.day.length);
+}
+function liveTick(now) { const b = loadBreaker(); b.hour.push(now); b.day.push(now); saveBreaker(b); }
+function tripBreaker(now) { const b = loadBreaker(); b.blockedUntil = now + LIVE.COOLDOWN_MS; saveBreaker(b); }
 
 // Per-keyword cache. PinClicks volumes are monthly-ish, so a few days is safe — and
 // every cache hit is one fewer slow (~25s) + Cloudflare-risky live lookup.
