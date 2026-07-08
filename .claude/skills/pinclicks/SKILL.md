@@ -147,3 +147,21 @@ are dynamic/server-rendered (Livewire), closer to the sensitive end. The existin
 15-35s per-action pacing works out to roughly 1.7-4 actions/minute during an active
 burst — already at or under that threshold. There is no reason to speed this up;
 if anything, err slower, not faster, especially right after any recent block.
+
+## Cross-checking a title beyond PinClicks
+
+PinClicks (volume + Top Pins competition) is the primary signal, but it's not the
+only tool available for validating a candidate title/keyword:
+- `WebSearch` can sanity-check whether a title's exact phrase is already saturated
+  with content elsewhere on the web (blogs, other Pinterest-adjacent sites) —
+  useful when PinClicks' own data is thin (null volume, empty related interests) and
+  you want a second read before committing to a save.
+- This skill (and `keyword-research`) is shared identically across all three agent
+  engines (Claude, Codex/ChatGPT, Antigravity/Gemini — confirmed 2026-07-08 via
+  direct session-transcript inspection, Codex reads this exact file). Running the
+  same trend through a different engine via the dashboard's Engine dropdown is
+  itself a natural second-opinion mechanism if you want independent verification of
+  a judgment call — no extra tooling needed, just re-run with `provider: "codex"`.
+- Don't use either of these to bypass PinClicks' own live competition read — they're
+  a supplement for thin/ambiguous data, not a replacement for `pinclicks_enrich
+  withTopPins`.
