@@ -246,11 +246,12 @@ function card(k, opts){
       <div class="rc-top">
         <div class="gauge" style="--p:${s};--gc:${scoreColor(s)}"><span>${s}<i>%</i></span></div>
         <div class="rc-head">
-          <div class="rc-vp">viral potential${k.parent_trend?` · <span class="rc-trend">trend: ${esc(k.parent_trend)}</span>`:''}</div>
+          <div class="rc-vp">viral potential</div>
           <div class="rc-title">${esc(title)}</div>
           <div class="rc-kw">${esc(k.keyword)}</div>
         </div>
       </div>
+      ${k.parent_trend?`<div class="rc-trendline" data-tip="The exact Pinterest Trends term this was found under">📈 <b>${esc(k.parent_trend)}</b></div>`:''}
       <div class="rc-badges">${verdictBadge(k.competition)}${ctrBadge(k.ctr_intent)}${momBadge(k.momentum)}</div>
       ${st?`<div class="rc-start ${st.cls}">${st.ic} ${st.txt}${peak?` · ${peak}`:''}</div>`:(peak?`<div class="rc-start later">🗓 ${peak}</div>`:'')}
       ${whyPreview?`<div class="rc-why">${whyPreview}</div>`:'<div class="rc-why"></div>'}

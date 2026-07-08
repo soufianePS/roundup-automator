@@ -84,12 +84,14 @@ Workflow:
    per trend: could be 1, could be 4+. Don't artificially cap it to match N or force
    exactly one per trend; also don't blow the whole live budget on one trend if others
    still need checking. Then `smart_timing` for the real publish window.
-4. Save EVERY winnable title with `save_keyword_score`, **always setting `parent_trend`**
-   to the seed it came from (e.g. "peach") — this is a real field, not just prose in
-   `source_notes`, and it's what the dashboard shows on each card so the user can see
-   which trend a keyword belongs to. A trend with 4 good dishes contributes 4 rows (all
-   sharing the same `parent_trend`); a trend with 1 contributes 1; a trend with none
-   contributes 0 (say so).
+4. Save EVERY winnable title with `save_keyword_score`. `parent_trend` is now a
+   **required** field (the tool call fails without it) — set it to the EXACT term
+   `harvest_trends` returned (or the exact seed you passed to `pinclicks_export_seeds`),
+   copied verbatim. Do NOT shorten or paraphrase it (if the trend term was "fig recipes",
+   save "fig recipes", not "fig") — the user wants to see the real Pinterest Trends term
+   on the dashboard card, not your own summary of it. A trend with 4 good dishes
+   contributes 4 rows (all sharing the same exact `parent_trend` string); a trend with 1
+   contributes 1; a trend with none contributes 0 (say so).
 
 ## PinClicks — BANK FIRST (offline), enrich the shortlist only
 The efficient path separates cheap bulk *collection* from free *analysis*:
