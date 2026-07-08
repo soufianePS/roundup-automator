@@ -63,6 +63,39 @@ Two consequences to internalize:
    treat it as **directional**, and cross-check with an external proxy (Google Keyword
    Planner / Keywords Everywhere, or the Google-volume × Pinterest-trend heuristic).
 
+## When the user GIVES YOU the trend name — skip discovery entirely
+
+The dashboard has a "Trend" field the user can fill in directly. When they give you
+a specific trend/topic themselves (e.g. "peach recipes"), that changes the job:
+**discovery is done, don't repeat it.** Do NOT call `harvest_trends` — the user
+already decided this is the trend worth working on; second-guessing that with
+another discovery pass wastes time and can surface a DIFFERENT trend than the one
+they asked for.
+
+Workflow for this mode:
+1. `recent_keywords` first — dedup against anything already saved for this trend.
+2. `pinclicks_export_seeds([trend])` if not already banked, then
+   `trend_titles(trend, {niche:'food'})` to pull several candidate dish/title
+   options under that ONE given trend.
+3. Live-check (`pinclicks_enrich withTopPins`) enough candidates to find ALL the
+   genuinely winnable ones — could be 1, could be several. Same worth-it-only rule:
+   don't pad to hit a requested count.
+4. For each keeper, give the same signals as always: viral potential
+   (`opportunity_score`), the real competition read (from Top Pins, not guessed),
+   and specifically **what helps it get impressions** — the right annotations/
+   hashtags, an exact-match-friendly title, a board-worthy angle. This is the part
+   the user explicitly asked to see: not just "is it winnable" but "what makes this
+   one reachable."
+5. `trend_curves(keyword)` for real timing per keyword (fall back to `smart_timing`
+   only if insufficient data) — same as the discovery workflow.
+6. Save with `save_keyword_score`, `parent_trend` = the user's exact given trend
+   string. `check_unsaved_winnables()` before the final summary, same as always.
+
+Everything else (card fields, timing precedence, competition scoring, the
+never-silently-drop rule) is identical to the discovery workflow below — the ONLY
+difference is skipping `harvest_trends` and using the user's given term as the seed
+instead of a discovered one.
+
 ## When the user asks for N "recipes" / "topics on X" — give N TRENDS, each with SEVERAL titles
 This is the primary interpretation of "give me N recipes": **N is the number of
 distinct TRENDS to cover, and each trend should surface several distinct winnable

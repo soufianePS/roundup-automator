@@ -26,7 +26,8 @@
     <!-- Radar: prompt + live agent activity -->
     <div class="card radar" id="radar" style="scroll-margin-top:20px"><div class="core">
       <div class="scan-opts">
-        <label>How many<select id="optCount"><option>2</option><option>3</option><option selected>5</option><option>8</option><option>10</option><option>15</option></select></label>
+        <label>Trend (optional)<input type="text" id="optTrend" placeholder="e.g. peach recipes — leave blank to auto-discover" style="min-width:220px"></label>
+        <label><span id="optCountLbl">How many trends</span><select id="optCount"><option>2</option><option>3</option><option selected>5</option><option>8</option><option>10</option><option>15</option></select></label>
         <label>Publish<select id="optWhen">
           <option value="as soon as possible (publish this week)">This week</option>
           <option value="next week">Next week</option>
@@ -121,7 +122,36 @@ function buildPrompt(userText){
   const when = $('optWhen').value;
   const cat = $('optCat').value;
   const fmt = $('optFmt').value;
+  const trend = $('optTrend').value.trim();
   const extra = (userText && userText.trim()) ? `Extra detail: ${userText.trim()}.` : '';
+
+  if (trend) {
+    return `I'm giving you the trend myself — SKIP trend discovery entirely, do NOT call harvest_trends. The trend is: "${trend}". I plan to publish ${when}. Format: ${fmt}. ${extra}
+
+STRUCTURE (this is the actual request — follow it literally):
+1. Call recent_keywords first — dedup against anything already surfaced for this trend.
+2. pinclicks_export_seeds(["${trend}"]) if it's not already banked, then
+   trend_titles("${trend}", {niche:'food'}) to pull several candidate dish/title
+   options under this ONE trend.
+3. Live-check (pinclicks_enrich withTopPins) enough of them to find ALL the
+   genuinely winnable ones under this trend — could be 1, could be 4+, up to ${count}
+   if that many are genuinely worth it. Don't pad to hit ${count} if fewer are worth it.
+4. For each keyword you keep, give: viral potential (opportunity_score 0-100), the
+   REAL competition read (low/medium/high — from Top Pins, not a guess), and
+   anything that helps it actually get impressions (the right hashtags/annotations,
+   an exact-match-friendly title, board-worthy angle).
+5. For EACH kept keyword: trend_curves(keyword) for the real publish window (fall
+   back to smart_timing only if it returns insufficient data) — never hand-write
+   publish_by.
+6. Save every keeper with save_keyword_score, parent_trend = "${trend}" exactly.
+   Call check_unsaved_winnables() before your final summary — if it returns
+   anything, save those first.
+7. Honor the Format above (single-topic vs roundup) using the SERP, not just phrasing.
+
+End with a table showing every keyword saved (or dropped, with why) — viral
+potential %, competition, and the publish_by timing verdict for each.`;
+  }
+
   return `Explore ${count} DISTINCT ${cat ? cat + ' ' : ''}TRENDS. I plan to publish ${when}. Format: ${fmt}. ${extra}
 
 STRUCTURE (this is the actual request — follow it literally):
@@ -142,9 +172,9 @@ at ${count}; do not force exactly one keyword per trend.
 
 CRITICAL rules:
 1. DEDUP — call recent_keywords first and DO NOT re-suggest any trend already surfaced before.
-2. NEVER SILENTLY DROP A WINNABLE FIND — if a candidate you live-checked comes back WINNABLE, you MUST either save it or explicitly tell me why you chose not to (e.g. "redundant with #2"). Do not just omit it from the summary with no trace.
+2. NEVER SILENTLY DROP A WINNABLE FIND — if a candidate you live-checked comes back WINNABLE, you MUST either save it or explicitly tell me why you chose not to (e.g. "redundant with #2"). Do not just omit it from the summary with no trace. Call check_unsaved_winnables() before your final summary, every time — if it returns anything, save those first.
 3. WORTH-IT ONLY, don't pad — but also don't artificially shrink a trend's results to hit a number. If a trend only has 1 good keyword, give 1; if it has 4, give all 4.
-4. TIMING — I'm publishing ${when}; use smart_timing(keyword, peak_month) for every save (never hand-write publish_by), and prefer trends whose window fits ${when}.
+4. TIMING — I'm publishing ${when}; use trend_curves(keyword) for every save (it reads the REAL Pinterest graph for that exact keyword and tells you if it's already lifting off or when it should, based on last cycle) — never hand-write publish_by, and only fall back to smart_timing if trend_curves has insufficient data. Prefer trends whose window fits ${when}.
 5. Honor the Format above (single-topic vs roundup) using the SERP, not just phrasing.
 
 Save each kept topic with save_keyword_score (opportunity_score 0-100, ctr_intent, competition, momentum, seasonal_timing, peak_month, publish_by, title_suggestion, pin_description, annotations, top_pin_saves, search_volume, trend_points). End with a table grouped BY TREND, showing all keywords saved under each (and any dropped, with why).`;
@@ -506,6 +536,11 @@ async function stop(){ if(es) es.close(); await fetch('/api/agent/stop',{method:
   $('actStatus').className='status idle'; $('actStatus').textContent='stopped'; $('sessBadge').className='status idle'; $('sessBadge').textContent='idle'; }
 
 $('runBtn').onclick=run; $('stopBtn').onclick=stop;
+$('optTrend').addEventListener('input',()=>{
+  const has = !!$('optTrend').value.trim();
+  $('optCountLbl').textContent = has ? 'Max keywords' : 'How many trends';
+  $('runBtn').innerHTML = has ? 'Find keywords <span class="cap">→</span>' : 'Find topics <span class="cap">→</span>';
+});
 $('ask').addEventListener('input',()=>{ const t=$('ask'); t.style.height='auto'; t.style.height=Math.min(t.scrollHeight,140)+'px'; });
 $('ask').addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); run(); } });
 $('likedToggle').onclick=()=>{ likedView=!likedView; const b=$('likedToggle'); b.setAttribute('aria-pressed',likedView); b.textContent=(likedView?'♥':'♡')+' Liked'; b.classList.toggle('on',likedView); loadRadar(); };
