@@ -215,7 +215,12 @@ export async function enrichKeywords(keywords, opts = {}) {
     await sleep(rand(5000, 8000));
     if (looksBlocked(await page.title(), page.url())) {
       tripBreaker(Date.now());
-      Logger.warn('[pinclicks] Cloudflare block detected on load — breaker tripped (24h cooldown). Add a fresh profile (Settings → Profiles).');
+      // NOTE: this can be an IP-level block, not just this profile's cookies — a fresh
+      // profile does NOT reliably fix it (confirmed 2026-07-08: a brand-new never-used
+      // profile hit the same block immediately on the login page, same network). Don't
+      // tell the user "just add a profile" as if that's guaranteed to work; the real
+      // fix is waiting out the cooldown (or changing network, if that's an option).
+      Logger.warn('[pinclicks] Cloudflare block detected on load — breaker tripped (24h cooldown). This may be an IP-level block, not just this profile — a fresh profile is not guaranteed to fix it. Wait for the cooldown, or try from a different network.');
       return { results, blocked: true, done: false };  // return any cached results we already had
     }
 

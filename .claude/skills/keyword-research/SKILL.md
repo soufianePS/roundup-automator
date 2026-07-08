@@ -163,9 +163,15 @@ bank is preferred. RULES (PinClicks is behind Cloudflare and WILL block bulk aut
 - It's slow on purpose (~25s/keyword). That's the point — don't try to speed it up.
 - Needs the browser profile FREE. Close any open login window / your own playwright
   browser first.
-- If it returns `blocked: true`: STOP hitting PinClicks and tell the user to open
-  **Settings → Agent browser → Profiles**, add a fresh profile, and log into PinClicks
-  there (a blocked profile stays blocked; a new one usually gets through).
+- If it returns `blocked: true`: STOP hitting PinClicks immediately — do not retry, do
+  not try a fresh profile as a fix. Confirmed 2026-07-08: this can be an **IP-level**
+  Cloudflare block, not a per-profile one — a brand-new never-used profile hit the
+  identical "Sorry, you have been blocked" page within minutes, on the same network.
+  Tell the user it looks IP-level, retrying will not help and may extend the cooldown,
+  and they should either wait it out or try from a different network if that's an
+  option. The circuit breaker persists this to disk now (`data/cache/pinclicks/
+  _breaker.json`) specifically so a NEW agent run won't blindly retry against an
+  already-blocked profile — respect that budget, don't work around it.
 
 **For the competition read, call `pinclicks_enrich` with `withTopPins: true`** on your
 final shortlist. It "goes inside" each keyword (opens Top Pins) and returns a real
