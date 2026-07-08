@@ -91,14 +91,32 @@ list. Two things it can do:
   This is the REAL competition signal — never guess competition from keyword
   phrasing alone.
 
-**What's NOT currently scraped**: clicking into an individual pin's own detail page
-(as opposed to the search-results row). The user has observed that opening a
-specific pin inside PinClicks shows keyword/tag data associated with that pin — this
-could be a genuinely different, more granular annotation source than the bulk
-Related Interests column, but **this has not been verified or built yet** — an
-investigation attempt on 2026-07-08 was cut short by a real Cloudflare block before
-it could be completed (see below). Do not assume this feature exists in the code
-until it's actually been built and tested.
+**What's NOT currently scraped — TWO real, documented features (via web research,
+2026-07-08 — not yet verified by direct inspection, PinClicks was blocked at the
+time):**
+
+1. **Top Pins likely has its own Export button**, same pattern as Keyword Explorer —
+   multiple independent reviews describe exporting Top Pins results as a CSV
+   containing saves, position, reactions, **annotations**, and a "pin score" per
+   ranking pin. The current code (`topPinsFor()` in pinclicks.js) does NOT use this
+   — it scrapes the raw rendered `<table>` via `$$eval` instead (title/domain/date/
+   saves only, no annotations). This is exactly the fragile approach the app is
+   supposed to avoid — the established, safer pattern (already used correctly for
+   Keyword Explorer) is click-Export-button → wait for download → parse the CSV, not
+   raw DOM scraping. **Next investigation step: check whether the Top Pins page has
+   an Export button, and if so, switch `topPinsFor()` to use it** — this alone would
+   add per-pin annotations to the competition read, a real upgrade.
+2. **A separate "Pin Stats" tool**: paste an individual Pin URL → get that pin's own
+   annotated interests + stats (saves, comments, reactions, pin score), also
+   exportable as CSV. This is most likely the exact "open a pin, see its keywords"
+   feature described in conversation — not yet built, not yet located in the UI
+   directly. Would need its own new function (e.g. `pinStatsFor(pinUrl)`) following
+   the same safe pattern (headed browser, anti-detection args, human pacing, capped).
+
+Do not assume either of these is implemented until actually built and verified live
+— this is a research lead, not a working feature. An investigation attempt on
+2026-07-08 was cut short by a real Cloudflare block before either could be checked
+directly in the UI (see incident below).
 
 ## Safety mechanics (all in `pinclicks.js`)
 
