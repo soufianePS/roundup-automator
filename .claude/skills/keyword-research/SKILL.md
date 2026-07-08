@@ -72,7 +72,16 @@ already decided this is the trend worth working on; second-guessing that with
 another discovery pass wastes time and can surface a DIFFERENT trend than the one
 they asked for.
 
-Workflow for this mode:
+**Fastest path: `best_keywords_for_trend(trend)`** — a single tool call that composes
+the bank lookup + `trend_titles` + `pinclicks_enrich(withTopPins)` + `trend_curves`
+internally and returns ranked candidates (competition, annotations, timing) in one
+shot, using the exact same cache/circuit-breaker safety as calling each tool
+separately. It does NOT auto-save. Use this by default for the "user gives me a
+trend" case; fall back to the manual step-by-step workflow below only if you need
+finer control (e.g. checking more than 8 candidates, or a niche/taxonomy filter it
+doesn't expose).
+
+Manual workflow (what `best_keywords_for_trend` does internally, spelled out):
 1. `recent_keywords` first — dedup against anything already saved for this trend.
 2. `pinclicks_export_seeds([trend])` if not already banked, then
    `trend_titles(trend, {niche:'food'})` to pull several candidate dish/title

@@ -218,22 +218,25 @@ server.tool('harvest_trends',
     return { ...res, terms: res.terms.slice(0, top ?? 60) };
   }));
 
+// Shared by the trend_curves tool and best_keywords_for_trend below.
+async function computeTiming(terms, leadDays) {
+  const rows = await fetchCurves(terms);
+  return rows.map(r => {
+    const historical = (r.counts || []).filter(c => c.predictedUpperBoundNormalizedCount == null);
+    const liftoff = detectLiftoff(historical);
+    const predicted = predictLiftoffFromHistory(r.counts, { leadDays: leadDays ?? 30 });
+    return {
+      term: r.term, growth_rates: r.growth_rates, has_prediction: r.has_prediction, counts: r.counts.slice(-16),
+      liftoff, predicted,
+      verdict: combinedTimingVerdict(r.term, liftoff, predicted),
+    };
+  });
+}
+
 server.tool('trend_curves',
   'Fetch the REAL weekly interest-over-time curve (same data as the graph on trends.pinterest.com, 2 years so a full prior cycle is visible) for up to ~25 terms at once, via the Trends network API (~2-4s, no browser clicking). Each result includes: `liftoff` (this YEAR\'s confirmed live signal: LIFTOFF/RISING/NEAR_PEAK/FLAT/DECLINING), `predicted` (a FORECAST from LAST cycle\'s curve — projects when the next bend should happen and recommends starting ~30 days before it, so the pin is indexed before the rise hits, instead of reacting after it\'s already visible), and `verdict` (the one to actually use — reconciles the two: trusts live confirmation when something is already moving, falls back to the historical forecast when live is still flat/quiet). Use this on your FINAL shortlist (not the whole harvest_trends list) as the primary timing signal. Feed the `counts` (last ~12 points) into save_keyword_score\'s `trend_points`.',
   { terms: z.array(z.string()).min(1).max(50), leadDays: z.number().int().optional().describe('Days of indexing lead time to recommend before the predicted liftoff (default 30).') },
-  wrap(async ({ terms, leadDays }) => {
-    const rows = await fetchCurves(terms);
-    return rows.map(r => {
-      const historical = (r.counts || []).filter(c => c.predictedUpperBoundNormalizedCount == null);
-      const liftoff = detectLiftoff(historical);
-      const predicted = predictLiftoffFromHistory(r.counts, { leadDays: leadDays ?? 30 });
-      return {
-        term: r.term, growth_rates: r.growth_rates, has_prediction: r.has_prediction, counts: r.counts.slice(-16),
-        liftoff, predicted,
-        verdict: combinedTimingVerdict(r.term, liftoff, predicted),
-      };
-    });
-  }));
+  wrap(async ({ terms, leadDays }) => computeTiming(terms, leadDays)));
 
 server.tool('list_trend_categories', 'List the valid Pinterest Trends interest/category names usable with harvest_trends.', {},
   wrap(() => Object.keys(INTEREST_IDS)));
@@ -328,6 +331,55 @@ server.tool('pinclicks_enrich',
       res.UNSAVED_WINNABLE_REMINDER = `⚠ ${pendingWinnables.size} WINNABLE keyword(s) found and not yet saved: ${[...pendingWinnables.values()].map(w => w.keyword).join(', ')}. Call save_keyword_score for EACH one now, before doing anything else — do not batch this for later, do not move to the next trend first.`;
     }
     return res;
+  }));
+
+server.tool('best_keywords_for_trend',
+  'ONE-CALL automated pipeline for the "user gives me a trend" workflow: pass a trend name, get back RANKED best keyword titles for it — each with real competition (from PinClicks Top Pins), real annotations (PinClicks\' own Related Interests), and real timing (trend_curves verdict) — sorted lowest-competition-first. Internally composes query_keyword_bank/trend_titles (offline, free) + pinclicks_enrich withTopPins (live, capped, cached) + trend_curves (Trends API) — same safety budget and cache as calling them separately, so this does NOT bypass the Cloudflare circuit breaker. Does NOT auto-save (still call save_keyword_score yourself for the ones worth keeping, parent_trend = the trend you passed in) — this tool is discovery + scoring only. If the trend isn\'t banked yet, returns a note telling you to pinclicks_export_seeds([trend]) first. If live PinClicks budget is exhausted/blocked, still returns whatever the cache + bank can offer, clearly marked.',
+  {
+    trend: z.string().min(1),
+    max: z.number().int().optional().describe('How many candidates to live-check + rank (default 6, cap 8).'),
+    niche: z.enum(['recipe', 'home']).optional(),
+  },
+  wrap(async ({ trend, max, niche }) => {
+    const cap = Math.min(max ?? 6, 8);
+    const bankRows = KeywordBank.query({ like: trend, minVolume: 0, limit: 500 });
+    if (!bankRows.length) {
+      return { trend, candidates: [], note: `No bank data for "${trend}" yet. Call pinclicks_export_seeds(["${trend}"]) first (live, human-paced, one-time per trend), then retry this call.` };
+    }
+    const exclude = new Set(KeywordScores.recentKeywords(500));
+    const shortlisted = trendTitles(bankRows, { exclude, limit: cap * 2, taxonomyContains: niche === 'home' ? null : 'food' });
+    if (!shortlisted.length) {
+      return { trend, candidates: [], note: `Bank has ${bankRows.length} rows for "${trend}" but none survived the offline pre-filter (all predicted-LOCKED, off-topic, or already surfaced).` };
+    }
+    const toCheck = shortlisted.slice(0, cap).map(c => c.keyword);
+    const enrichRes = await enrichKeywords(toCheck, { withTopPins: true, niche: niche || 'recipe', max: cap });
+    for (const r of enrichRes.results || []) {
+      if (r.verdict === 'WINNABLE') pendingWinnables.set(String(r.keyword).toLowerCase(), { keyword: r.keyword, competition: r.competition, foundAt: new Date().toISOString() });
+    }
+    const checked = (enrichRes.results || []).filter(r => r.verdict);
+    const timings = checked.length ? await computeTiming(checked.map(r => r.keyword)) : [];
+    const timingByTerm = new Map(timings.map(t => [t.term.toLowerCase(), t]));
+
+    const candidates = checked.map(r => {
+      const cand = shortlisted.find(c => c.keyword === r.keyword) || {};
+      const timing = timingByTerm.get(r.keyword.toLowerCase());
+      return {
+        keyword: r.keyword, dish: cand.dish || null, volume: cand.volume ?? r.volume ?? null,
+        competition: r.competition, verdict: r.verdict, annotations: cand.annotations || '',
+        publish_by: timing ? timing.verdict : null, trend_points: timing ? timing.counts.map(c => c.normalizedCount) : null,
+      };
+    }).sort((a, b) => (a.competition ?? 1) - (b.competition ?? 1));
+
+    const skippedForBudget = toCheck.length - checked.length;
+    const result = {
+      trend, candidates, checkedCount: checked.length,
+      skippedNoLiveData: skippedForBudget || undefined,
+      blocked: enrichRes.blocked || undefined, budgetExhausted: enrichRes.budgetExhausted || undefined,
+    };
+    if (pendingWinnables.size > 0) {
+      result.UNSAVED_WINNABLE_REMINDER = `⚠ ${pendingWinnables.size} WINNABLE keyword(s) found and not yet saved: ${[...pendingWinnables.values()].map(w => w.keyword).join(', ')}. Call save_keyword_score for EACH one now — parent_trend = "${trend}".`;
+    }
+    return result;
   }));
 
 // ─────────────────────────── Data / introspection (full visibility) ───────────────────────────

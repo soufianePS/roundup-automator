@@ -24,6 +24,28 @@ ALL of that — including the persisted rate-limit budget, so it doesn't even sh
 as "spent" for the next real run. This is exactly what caused a real block on
 2026-07-08 (see below).
 
+## One-call automation: `best_keywords_for_trend(trend)`
+
+For the common case — "here's a trend, give me the best keywords for it" — there's a
+single composed MCP tool that does the whole pipeline in one call: bank lookup
+(`query_keyword_bank`/`trend_titles`, offline) → live competition read
+(`pinclicks_enrich withTopPins`, respects cache + circuit breaker) → real timing
+(`trend_curves`). Returns candidates ranked lowest-competition-first, each with
+`competition`, `verdict`, `annotations` (real PinClicks Related Interests),
+`publish_by` (real graph-based timing). It does not auto-save — review, then
+`save_keyword_score` the keepers with `parent_trend` set to the trend you passed in.
+If the trend isn't banked yet, it tells you to `pinclicks_export_seeds([trend])`
+first rather than silently failing. If live budget is exhausted/blocked, it still
+returns whatever the cache can offer and marks `budgetExhausted`/`blocked` clearly
+rather than pretending everything was checked.
+
+Verified 2026-07-08 (cache-only, zero live PinClicks calls, safe under the current
+block): given `"zucchini bread"`, correctly ranked 3 real cached candidates by
+competition, attached real annotations/timing where available, and correctly
+reported `null` timing for two very-long-tail terms Pinterest Trends itself has no
+curve data for (not a bug — genuine data absence, confirmed by checking `trend_curves`
+directly for those exact terms).
+
 ## Two workflows — know which one you need
 
 ### 1. Bulk export (`pinclicks_export_seeds` → `exportSeeds()`)
