@@ -18,6 +18,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { Logger } from './logger.js';
 import { activeProfileDir } from './profiles.js';
+import { parseCSV } from './pinclicks-export.js';
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -235,6 +236,54 @@ export async function annotationsForTopPins(page, { max = 5 } = {}) {
     }
   }
   return out;
+}
+
+const EXPORTS_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'data', 'exports');
+
+/**
+ * PREFERRED annotations method (2026-07-09, owner-confirmed): Top Pins has TWO
+ * export buttons — "Pin Data" export and "Annotation Interests" export — giving
+ * richer per-pin data + real annotations in one click each, same safe pattern as
+ * Keyword Explorer's export (click Export → download → parse CSV), NOT per-pin
+ * clicking. This supersedes annotationsForTopPins() above as the primary method —
+ * one page + two button clicks beats clicking into 3-5 individual pins.
+ *
+ * ⚠ NOT YET LIVE-TESTED — same reason as annotationsForTopPins(): written during
+ * the circuit breaker's cooldown, deliberately deferred rather than testing
+ * mid-cooldown. Button label regexes and CSV column names are reasonable guesses
+ * (mirroring the confirmed Keyword Explorer export shape) — verify + fix on first
+ * real use, ideally by screenshotting the Top Pins page first to see the actual
+ * button text before clicking.
+ *
+ * Call this INSTEAD of (not in addition to) the plain topPinsFor() DOM-scrape for
+ * keywords that matter enough to check — it should replace that function's table
+ * scrape once verified, since the exported CSV will have more reliable data than
+ * scraping rendered `<table>` text.
+ */
+export async function exportTopPins(page, keyword) {
+  mkdirSync(EXPORTS_DIR, { recursive: true });
+  await page.goto('https://app.pinclicks.com/pins?search=' + encodeURIComponent(keyword), { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
+  await sleep(rand(7000, 10000));
+  if (looksBlocked(await page.title(), page.url())) return { blocked: true };
+
+  const safe = keyword.replace(/[^a-z0-9]+/gi, '-');
+  const downloadOne = async (nameRe, outSuffix) => {
+    const btn = page.getByRole('button', { name: nameRe }).first();
+    if (!(await btn.count())) return null;
+    const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 25000 }), btn.click()]);
+    const fp = join(EXPORTS_DIR, `toppins-${safe}-${outSuffix}.csv`);
+    await dl.saveAs(fp);
+    return parseCSV(readFileSync(fp, 'utf8'));
+  };
+
+  let pinData = null, annotationData = null;
+  try { pinData = await downloadOne(/pin.*data|export.*pin/i, 'pindata'); }
+  catch (e) { Logger.warn(`[pinclicks] Pin Data export failed for "${keyword}": ${e.message.split('\n')[0]}`); }
+  await sleep(rand(3000, 6000));
+  try { annotationData = await downloadOne(/annotat/i, 'annotations'); }
+  catch (e) { Logger.warn(`[pinclicks] Annotation export failed for "${keyword}": ${e.message.split('\n')[0]}`); }
+
+  return { blocked: false, keyword, pinDataRows: pinData, annotationRows: annotationData };
 }
 
 /**

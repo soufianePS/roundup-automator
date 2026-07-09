@@ -26,7 +26,7 @@ const rand = (a, b) => a + Math.random() * (b - a);
 const looksBlocked = (t, u) => /just a moment|attention required|cloudflare/i.test(t || '') || /challenge|blocked/i.test(u || '');
 
 /** Minimal RFC-4180 CSV parser (handles quotes, embedded commas + newlines). */
-function parseCSV(text) {
+export function parseCSV(text) {
   const rows = []; let row = [], field = '', inQ = false;
   for (let i = 0; i < text.length; i++) {
     const c = text[i];
