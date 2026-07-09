@@ -103,33 +103,29 @@ list. Two things it can do:
   This is the REAL competition signal — never guess competition from keyword
   phrasing alone.
 
-**What's NOT currently scraped — CONFIRMED mechanism, owner-verified in the live UI
-(2026-07-09), TWO valid methods found, in preference order:**
+**Per-pin annotations — SOLVED, `exportTopPins(page, keyword)` in pinclicks.js,
+CONFIRMED WORKING end-to-end (2026-07-09), re-verified with a second independent
+keyword to rule out a fluke.** Click the "Export" trigger button (top-right of
+Top Pins, next to "Track Keyword") → click "Pin Data" (use `getByText(exact:true)`,
+NOT `getByRole('button')` — that finds 0 matches for it despite the element
+actually being a `<button>`, an ARIA quirk) → downloads ONE CSV with everything:
+real accurate saves (confirmed meaningfully more accurate than the plain table
+scrape — e.g. 108,948 real saves vs a much lower table-row read for the same pin),
+pin score, position, created date, comments/repins/reactions, a `Keyword
+Annotations` column (real per-pin Pinterest tags, comma-separated), image/board/
+profile URL, and the pin's own description. No second "Annotated Interests"
+export needed — "Pin Data" alone already has real annotations.
 
-**PREFERRED: Top Pins has two Export buttons** — "Pin Data" export and
-"Annotation Interests" export (owner-confirmed 2026-07-09). Same safe pattern as
-Keyword Explorer's export (click Export → download → parse CSV), NOT per-pin
-clicking — one page load + two button clicks gets richer per-pin data AND real
-annotations for the whole Top Pins result at once. Implemented as
-`exportTopPins(page, keyword)` in pinclicks.js, but ⚠ **NOT YET LIVE-TESTED** —
-written during the circuit breaker's cooldown so verification was deliberately
-deferred. Button label regexes (`/pin.*data/i`, `/annotat/i`) are reasonable
-guesses — verify the real button text on first use (screenshot first, don't just
-click blind) and fix if wrong. This should REPLACE `topPinsFor()`'s DOM-table-
-scrape once verified — exported CSV data will be more reliable than scraping
-rendered `<table>` text.
+This should REPLACE `topPinsFor()`'s DOM-table-scrape as the actual data source
+for the competition formula (not done yet this session — `exportTopPins()` exists
+standalone, not yet wired into `enrichKeywords()`). The old click-into-pin
+approach (`annotationsForTopPins()`) never got its extraction selector working
+after 7 live attempts and is now just a documented fallback, not the primary path.
 
-**FALLBACK: click an individual pin → sidebar shows "Annotated Interests"** — also
-owner-confirmed live, works, but costs one click+wait per pin instead of one
-export per whole keyword. Implemented as `annotationsForTopPins(page, opts)` in
-pinclicks.js, same untested-pending-cooldown caveat. Use this only if the export
-buttons turn out not to exist / not to work for some reason — the export method is
-strictly cheaper when both are available.
-
-Both need careful selector verification once unblocked, with the same human pacing
-as everywhere else in this skill — same safe launch pattern, no exceptions. Do NOT
-pay either cost (export or per-pin click) for a keyword you're about to reject as
-LOCKED from the plain competition read — only for keywords worth keeping.
+Same human pacing as everywhere else in this skill applies to `exportTopPins()`
+too — same safe launch pattern, no exceptions. Only call it for keywords worth
+keeping (already passed the competition read) — never spend the extra cost on a
+keyword you're about to reject as LOCKED.
 
 ## Safety mechanics (all in `pinclicks.js`)
 
