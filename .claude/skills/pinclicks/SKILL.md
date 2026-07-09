@@ -103,39 +103,26 @@ list. Two things it can do:
   This is the REAL competition signal — never guess competition from keyword
   phrasing alone.
 
-**What's NOT currently scraped — TWO real, documented features (via web research,
-2026-07-08 — not yet verified by direct inspection, PinClicks was blocked at the
-time):**
+**What's NOT currently scraped — CONFIRMED mechanism (2026-07-09, verified directly
+by the owner in the live UI, not a research guess):**
 
-1. **"Pin Stats" tool — paste an individual Pin URL → get that pin's own annotated
-   interests + stats** (saves, comments, reactions, pin score), also exportable as
-   CSV. **CONVERGED lead**: two independent research passes (ChatGPT 2026-07-09 and
-   Gemini 2026-07-09), working from different sources, both landed on this
-   specifically and both explicitly said NOT hover. This is now the top-priority
-   thing to verify. Planned flow: `topPinsFor()` already collects the top pin URLs
-   (or would need to start capturing them — currently only scrapes title/domain/
-   date/saves, not the href) → feed those URLs into a new `pinStatsFor(pinUrl)`
-   function → extract annotations → this is most likely the exact "open a pin, see
-   its keywords" feature described in conversation. Not yet built.
-2. **Top Pins may have its own Export button**, same pattern as Keyword Explorer —
-   one research pass described exporting Top Pins results as a CSV containing
-   saves, position, reactions, annotations, and a "pin score" per ranking pin. The
-   current code (`topPinsFor()` in pinclicks.js) scrapes the raw rendered `<table>`
-   via `$$eval` instead — exactly the fragile approach the app is supposed to
-   avoid in favor of the established click-Export-parse-CSV pattern already used
-   correctly for Keyword Explorer. Check this if Pin Stats (above) doesn't pan out.
-3. **Hovering a Top Pins row may show annotations inline** — only ONE of the two
-   most recent research passes suggested this, and the other explicitly said NOT
-   hover ("may change... URL input sounds more stable"). Demoted to last —
-   cheapest to try, but least corroborated.
+**Click on an individual pin inside Top Pins → a sidebar panel opens showing
+"Annotated Interests"** — a real list of the keyword tags Pinterest assigned to
+that exact pin. Confirmed live: navigate to Top Pins for a keyword (already what
+`topPinsFor()` does), click a pin row (not hover, not a separate URL-paste tool,
+not an export button — all three prior research leads were wrong/unconfirmed),
+and the annotations appear in a sidebar.
 
-These leads may all describe the SAME underlying feature seen via different UI
-paths, or PinClicks' UI may have changed between when each source was written. Do
-not assume any is implemented until actually built and verified live — these are
-research leads, not working features. An investigation attempt on 2026-07-08 was
-cut short by a real Cloudflare block before any could be checked directly in the UI
-(see incident below). When unblocked: check Pin Stats first (most corroborated),
-then Export button, then hover — stop as soon as one confirms real annotation data.
+Not yet built in code. To add: `topPinsFor()` needs to (1) capture each pin's
+clickable element/id while scraping the table (it currently only reads
+title/domain/date/saves, not anything to click back into), (2) for the top few
+pins worth checking, click the row, wait for the sidebar to render, scrape the
+"Annotated Interests" list, close the sidebar, move to the next pin. This adds a
+per-pin interaction cost — do NOT do this for all 10 pins by default; likely only
+for the top 3-5, and only when the keyword already passed the competition read
+(no point paying for annotations on a keyword you're about to reject as LOCKED).
+Needs careful selector work + the same human pacing as everywhere else in this
+skill — same safe launch pattern, no exceptions.
 
 ## Safety mechanics (all in `pinclicks.js`)
 
