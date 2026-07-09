@@ -205,40 +205,80 @@ export async function topPinsFor(page, keyword, { niche = 'recipe' } = {}) {
 /**
  * Click into the top pins from an ALREADY-SCRAPED Top Pins page (call right after
  * topPinsFor(), same page, don't re-navigate) to collect each pin's real
- * "Annotated Interests" — confirmed live 2026-07-09 by direct owner verification:
- * click a pin row → a sidebar opens showing "Annotated Interests" with Pinterest's
- * real tag list for that exact pin.
+ * "Annotated Interests" — confirmed live 2026-07-09 by direct owner AND agent
+ * verification (screenshotted the real sidebar): click a pin's "Open preview"
+ * button (`aria-label="Open preview for <title>"`, `[data-pin-preview-media-trigger]`)
+ * → a sidebar opens with a "Pin Performance" box (pin score/appearances/saves/
+ * repins/comments/reactions — MORE ACCURATE than the plain table scrape's saves
+ * column, e.g. real saves seen at 108,948 for a pin the table row read much lower
+ * for — worth switching topPinsFor()'s saves signal to this sidebar value once
+ * this function is wired in) followed by an "Annotated Interests" section with
+ * pill-style tag buttons underneath (e.g. "Easy Cinnamon Apple Bread", "Homemade
+ * Apple Bread Loaf").
  *
- * ⚠ NOT YET LIVE-TESTED. Written from the described structure (sidebar heading
- * "Annotated Interests", tag list beneath it) — the exact click target and sidebar
- * selectors are a reasonable first guess, not verified against the real DOM. The
- * circuit breaker was in cooldown (until 2026-07-09 23:02 UTC, from the 2026-07-08
- * block) at the time this was written, so live verification was deliberately
- * deferred rather than testing against a profile mid-cooldown. Verify + fix
- * selectors on the FIRST real call once the breaker clears, using page.screenshot()
- * to confirm the sidebar actually opened before trusting the scraped list.
+ * CONFIRMED WORKING (2026-07-09, live-verified with screenshots): the click
+ * target — `previewBtns[i].click({force:true})` — a `[data-pin-preview-overlay]`
+ * hover layer intercepts the plain click, hence `force`. Clicking it DOES open a
+ * real sidebar with a real "Annotated Interests" section and real pill tags.
+ *
+ * ⚠ STILL BROKEN as of this version: the in-page extraction JS below reliably
+ * returns the wrong elements (table-header text: "Sort by", "Pin score", "Saves",
+ * etc.) instead of the annotation pills, across multiple attempted fixes
+ * (ancestor-walking, then forward document-position filtering via
+ * compareDocumentPosition — both gave the identical wrong output). The leaf-node
+ * text search for "annotated interest" is very likely matching something OTHER
+ * than the visible sidebar heading — possibly a hydration/state JSON blob
+ * embedded near the top of the page that Livewire/Vue apps commonly ship for
+ * initial render, which would explain why "everything after it" resolves to
+ * content from near the top of the page every time. NOT resolved after 7 live
+ * attempts in one session (2026-07-09) — needs either manual DevTools inspection
+ * of the real heading element (right-click → Inspect on "Annotated Interests" in
+ * a live sidebar, read its actual tag/class/ancestor chain directly) rather than
+ * continued blind selector guessing, or a completely different extraction
+ * strategy (e.g. query specifically for `[class*="pill"]`/`[class*="badge"]`-like
+ * classes instead of searching by heading-adjacency at all).
  *
  * Only call this for keywords that already passed the competition read
  * (WINNABLE/maybe) — never spend the extra per-pin cost on a LOCKED keyword.
  */
 export async function annotationsForTopPins(page, { max = 5 } = {}) {
-  const rows = await page.$$('table tbody tr');
+  const KNOWN_HEADER = new Set(['Export', 'Track Keyword', 'Pin Data', 'Annotated Interests']);
+  const previewBtns = await page.getByRole('button', { name: /open preview/i }).all();
   const out = [];
-  for (let i = 0; i < Math.min(rows.length, max); i++) {
+  for (let i = 0; i < Math.min(previewBtns.length, max); i++) {
     try {
-      await rows[i].click();
+      await previewBtns[i].click({ force: true, timeout: 10000 });
       await sleep(rand(2000, 4000));
       const annotations = await page.evaluate(() => {
         const heading = [...document.querySelectorAll('*')].find(el =>
-          el.children.length === 0 && /annotated interests/i.test(el.textContent || ''));
+          el.children.length === 0 && /annotated interest/i.test(el.textContent || ''));
         if (!heading) return [];
-        const panel = heading.closest('[class*="sidebar"], [class*="panel"], aside') || heading.parentElement?.parentElement;
-        if (!panel) return [];
-        return [...panel.querySelectorAll('li, [class*="tag"], [class*="chip"], [class*="annotation"]')]
-          .map(el => (el.textContent || '').trim()).filter(t => t && t.length < 60).slice(0, 20);
+        // Forward document-position slice: everything that comes AFTER the
+        // heading in DOM order, within a bounded distance, is far more robust
+        // than guessing the exact ancestor/container nesting (which varies).
+        // Use compareDocumentPosition directly against each candidate — trying
+        // to find the heading's own index inside a differently-typed element
+        // list (button/span/li) doesn't work since the heading itself may not
+        // match those tags, which silently fell back to scanning the WHOLE page
+        // from the top (grabbing the table header instead) in an earlier version.
+        const all = [...document.querySelectorAll('button, span, li')];
+        const after = all.filter(el => heading.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING).slice(0, 40);
+        const KNOWN = ['Export', 'Track Keyword', 'Pin Data', 'Annotated Interests'];
+        const seen = new Set();
+        const items = [];
+        for (const el of after) {
+          const t = (el.textContent || '').trim();
+          if (!t || t.length < 2 || t.length > 60 || KNOWN.includes(t) || seen.has(t)) continue;
+          // Stop once we clearly leave the annotations section (hit the next
+          // named section heading, e.g. a following "Related Pins"-style block).
+          if (/^(related|top pins|similar|source|domain)/i.test(t)) break;
+          seen.add(t); items.push(t);
+          if (items.length >= 20) break;
+        }
+        return items;
       });
       out.push({ index: i, annotations });
-      await page.keyboard.press('Escape').catch(() => {}); // close sidebar — selector unverified, Escape is a safe generic fallback
+      await page.keyboard.press('Escape').catch(() => {});
       await sleep(rand(1500, 3000));
     } catch (e) {
       Logger.warn(`[pinclicks] annotation click failed for pin ${i}: ${e.message}`);
@@ -257,12 +297,14 @@ const EXPORTS_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'd
  * clicking. This supersedes annotationsForTopPins() above as the primary method —
  * one page + two button clicks beats clicking into 3-5 individual pins.
  *
- * ⚠ NOT YET LIVE-TESTED — same reason as annotationsForTopPins(): written during
- * the circuit breaker's cooldown, deliberately deferred rather than testing
- * mid-cooldown. Button label regexes and CSV column names are reasonable guesses
- * (mirroring the confirmed Keyword Explorer export shape) — verify + fix on first
- * real use, ideally by screenshotting the Top Pins page first to see the actual
- * button text before clicking.
+ * ⚠ STILL NOT LIVE-TESTED (the "download the CSV and read it" part). What IS
+ * confirmed live (2026-07-09): the button labels are exactly "Export", "Pin
+ * Data", "Annotated Interests" (verified via a real page inspection), and the
+ * two-step click (Export first, then the specific option) is now built in —
+ * the original version tried to click "Pin Data"/"Annotated Interests" directly
+ * without opening the dropdown, which was wrong. What's NOT yet confirmed: that
+ * clicking these actually triggers a file download (vs. e.g. opening a modal or
+ * requiring a date-range picker first) and the resulting CSV's column names.
  *
  * Call this INSTEAD of (not in addition to) the plain topPinsFor() DOM-scrape for
  * keywords that matter enough to check — it should replace that function's table
@@ -276,10 +318,24 @@ export async function exportTopPins(page, keyword) {
   if (looksBlocked(await page.title(), page.url())) return { blocked: true };
 
   const safe = keyword.replace(/[^a-z0-9]+/gi, '-');
+  // Confirmed live 2026-07-09: there is ONE "Export" trigger button (top-right of
+  // the Top Pins page, next to "Track Keyword"); clicking it reveals "Pin Data"
+  // and "Annotated Interests" as two separate options — they exist as real
+  // <button> elements in the DOM even before "Export" is clicked (found via a
+  // flat page-wide button query), so they're likely a pre-mounted, hidden
+  // dropdown menu rather than lazily rendered. Click "Export" first to make the
+  // option interactable, THEN click the specific option — the previous version
+  // tried to click "Pin Data"/"Annotated Interests" directly without opening the
+  // dropdown first, which was never live-tested and likely would have hung
+  // waiting for a hidden element to become visible.
   const downloadOne = async (nameRe, outSuffix) => {
+    const exportBtn = page.getByRole('button', { name: /^export$/i }).first();
+    if (!(await exportBtn.count())) return null;
+    await exportBtn.click({ force: true, timeout: 10000 });
+    await sleep(rand(1000, 2000));
     const btn = page.getByRole('button', { name: nameRe }).first();
     if (!(await btn.count())) return null;
-    const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 25000 }), btn.click()]);
+    const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 25000 }), btn.click({ force: true, timeout: 10000 })]);
     const fp = join(EXPORTS_DIR, `toppins-${safe}-${outSuffix}.csv`);
     await dl.saveAs(fp);
     return parseCSV(readFileSync(fp, 'utf8'));
