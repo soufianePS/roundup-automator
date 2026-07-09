@@ -79,12 +79,24 @@ list. Two things it can do:
   domain, date, saves), and computes a competition score:
   ```
   comp = 0.4
-    + 0.35 if exactMatchTop5 >= 4   (else -0.2 if <= 1)
-    + 0.30 if freshHighSave >= 1    (a <3mo-old pin with >500 saves = a real incumbent)
-    + 0.20 if medianSaves > 1000    (else -0.2 if < 300 recipe / 150 home)
-    - 0.15 if staleCount >= 3       (3+ pins >12mo old = ranking has gone stale, opening)
-    + 0.20 if bigMedia >= 3         (thespruce/bhg/foodnetwork/etc. dominate)
-    - 0.15 if weakPins >= 3         (3+ pins under the save floor = thin competition)
+    + 0.35 if exactMatchTop5 >= 4     (else -0.2 if <= 1) — token-set match, not
+                                        substring: stop words stripped, plurals
+                                        stemmed, so "muffins" matches "muffin" and
+                                        "cake" no longer false-matches "cupcake"
+    + 0.30 if freshHighSave >= 1      (a <3mo-old pin with >500 saves = a real incumbent)
+    + 0.20 if medianSaves > 1000      (else -0.2 if < 300 recipe / 150 home)
+    + 0.30 if freshBigMedia >= 1      (a <6mo big-media pin — domain authority AND
+                                        freshness both maxed = near-unbeatable)
+    - 0.15 if staleBigMedia >= 2      (fixed 2026-07-09, was a real bug: a >12mo
+                                        big-media pin holding rank on authority alone
+                                        is VULNERABLE, not a wall — Pinterest's own
+                                        ranking favors fresh pins; the old formula
+                                        penalized fresh and stale big-media
+                                        identically, which misclassified a stale-
+                                        big-media SERP as LOCKED when it's actually
+                                        a real opportunity)
+    - 0.15 if staleCount >= 3         (3+ pins >12mo old, any domain = opening)
+    - 0.15 if weakPins >= 3           (3+ pins under the save floor = thin competition)
   clamped to [0.05, 1]
   verdict: <=0.35 WINNABLE | <=0.6 "maybe, needs a better angle" | >0.6 LOCKED
   ```
@@ -95,40 +107,35 @@ list. Two things it can do:
 2026-07-08 — not yet verified by direct inspection, PinClicks was blocked at the
 time):**
 
-1. **Top Pins likely has its own Export button**, same pattern as Keyword Explorer —
-   multiple independent reviews describe exporting Top Pins results as a CSV
-   containing saves, position, reactions, **annotations**, and a "pin score" per
-   ranking pin. The current code (`topPinsFor()` in pinclicks.js) does NOT use this
-   — it scrapes the raw rendered `<table>` via `$$eval` instead (title/domain/date/
-   saves only, no annotations). This is exactly the fragile approach the app is
-   supposed to avoid — the established, safer pattern (already used correctly for
-   Keyword Explorer) is click-Export-button → wait for download → parse the CSV, not
-   raw DOM scraping. **Next investigation step: check whether the Top Pins page has
-   an Export button, and if so, switch `topPinsFor()` to use it** — this alone would
-   add per-pin annotations to the competition read, a real upgrade.
-2. **A separate "Pin Stats" tool**: paste an individual Pin URL → get that pin's own
-   annotated interests + stats (saves, comments, reactions, pin score), also
-   exportable as CSV. This is most likely the exact "open a pin, see its keywords"
-   feature described in conversation — not yet built, not yet located in the UI
-   directly. Would need its own new function (e.g. `pinStatsFor(pinUrl)`) following
-   the same safe pattern (headed browser, anti-detection args, human pacing, capped).
-3. **Hovering a Top Pins row may show annotations inline** — a second independent
-   research pass (2026-07-09) described hovering over top-ranking pins to reveal
-   their interest annotations directly, without navigating anywhere. If true, this
-   would be the CHEAPEST fix — no extra page load, no export/download flow, just a
-   `hover()` + read a tooltip/panel inside the existing `topPinsFor()` page. Check
-   this FIRST when unblocked, before the Export-button or Pin-Stats-tool leads above
-   (in likely order of implementation cost: hover < export button < separate tool).
+1. **"Pin Stats" tool — paste an individual Pin URL → get that pin's own annotated
+   interests + stats** (saves, comments, reactions, pin score), also exportable as
+   CSV. **CONVERGED lead**: two independent research passes (ChatGPT 2026-07-09 and
+   Gemini 2026-07-09), working from different sources, both landed on this
+   specifically and both explicitly said NOT hover. This is now the top-priority
+   thing to verify. Planned flow: `topPinsFor()` already collects the top pin URLs
+   (or would need to start capturing them — currently only scrapes title/domain/
+   date/saves, not the href) → feed those URLs into a new `pinStatsFor(pinUrl)`
+   function → extract annotations → this is most likely the exact "open a pin, see
+   its keywords" feature described in conversation. Not yet built.
+2. **Top Pins may have its own Export button**, same pattern as Keyword Explorer —
+   one research pass described exporting Top Pins results as a CSV containing
+   saves, position, reactions, annotations, and a "pin score" per ranking pin. The
+   current code (`topPinsFor()` in pinclicks.js) scrapes the raw rendered `<table>`
+   via `$$eval` instead — exactly the fragile approach the app is supposed to
+   avoid in favor of the established click-Export-parse-CSV pattern already used
+   correctly for Keyword Explorer. Check this if Pin Stats (above) doesn't pan out.
+3. **Hovering a Top Pins row may show annotations inline** — only ONE of the two
+   most recent research passes suggested this, and the other explicitly said NOT
+   hover ("may change... URL input sounds more stable"). Demoted to last —
+   cheapest to try, but least corroborated.
 
-These three leads may all describe the SAME underlying feature seen via different UI
-paths (PinClicks may expose annotations multiple ways), or PinClicks' UI may have
-changed between when each source was written. Do not assume any is implemented until
-actually built and verified live — these are research leads, not working features.
-An investigation attempt on 2026-07-08 was cut short by a real Cloudflare block
-before any could be checked directly in the UI (see incident below). When
-unblocked: check hover first (cheapest to verify), then Export button, then Pin
-Stats — stop as soon as one confirms real annotation data, no need to check all
-three if the first one works.
+These leads may all describe the SAME underlying feature seen via different UI
+paths, or PinClicks' UI may have changed between when each source was written. Do
+not assume any is implemented until actually built and verified live — these are
+research leads, not working features. An investigation attempt on 2026-07-08 was
+cut short by a real Cloudflare block before any could be checked directly in the UI
+(see incident below). When unblocked: check Pin Stats first (most corroborated),
+then Export button, then hover — stop as soon as one confirms real annotation data.
 
 ## Safety mechanics (all in `pinclicks.js`)
 
@@ -188,6 +195,26 @@ STOP. Do not retry. Do not open a fresh profile as a workaround. Tell the user
 plainly: this may be an IP-level block, the safe move is to wait out the cooldown
 (or try from a different network if that's genuinely available), and that retrying
 makes it more likely to extend the block, not less.
+
+## Explicitly declined: deeper anti-bot evasion
+
+External research (2026-07-09) also recommended `playwright-extra` + stealth
+plugins, residential proxy rotation, bezier-curve "ghost cursor" mouse movement,
+and typo-injection typing to more thoroughly defeat Cloudflare/PinClicks' bot
+detection. **Deliberately not implemented.** Reasons:
+- The block on 2026-07-08 was caused by a script that bypassed the existing safe
+  pattern entirely (headless, no anti-detection args), not by the safe pattern
+  itself being insufficient. The lesson was "always use the safe wrapper," not
+  "the wrapper needs to be sneakier."
+- This account's own paid PinClicks login is what's being automated — routing it
+  through a rotating residential proxy would make login traffic look like account
+  takeover (same cookies, different IP each session), risking the account itself
+  getting flagged, not just an IP.
+- This conflicts with the actual policy already established here: when blocked,
+  STOP and wait — don't escalate technique to slip past the block. If PinClicks
+  starts blocking more often even with the existing safe pattern followed
+  correctly, that's a signal to slow down further (longer pacing, lower daily
+  cap), not to invest in evasion engineering.
 
 ## Researched pacing context (general Cloudflare behavior, not PinClicks-specific —
 no official PinClicks rate-limit docs exist since it has no public API)
