@@ -170,12 +170,18 @@ too — same safe launch pattern, no exceptions. It's called automatically by
   ```
   `headless: true` and/or omitting these args is a detectable bot fingerprint —
   believed to be a direct contributing cause of the 2026-07-08 block (see below).
-- **Circuit breaker**: max 12 live lookups/hour, 40/day, persisted to disk at
-  `data/cache/pinclicks/_breaker.json` (fixed 2026-07-08 — it used to be in-memory
-  only, which reset to a fresh budget every single agent run since the MCP server is
-  a new process each time; several separate runs could each burn their own "full"
-  budget with no shared awareness). On a detected block, it writes a 24h cooldown to
-  that same file — respected by every future run, not just the one that got blocked.
+- **Circuit breaker**: NO hourly/daily count ceiling anymore (removed 2026-07-09,
+  owner decision, after a full day of real testing with zero new blocks from
+  pacing alone — the count cap was extra caution on top of the real anti-spam
+  mechanism, not the mechanism itself). What's still enforced: on a DETECTED
+  block, a 30min cooldown (was 24h, shortened 2026-07-09 after evidence a real
+  block cleared overnight) is written to disk at `data/cache/pinclicks/
+  _breaker.json` — persisted so it survives across separate agent runs (the MCP
+  server is a fresh process per run, so this can't live in memory) and is
+  respected by every future run, not just the one that got blocked. This is a
+  REACTIVE recovery response to something that actually went wrong, not a
+  preemptive limit — don't reintroduce a count-based cap without new evidence
+  it's actually needed.
 - **Per-keyword cache**: 3-day TTL, so repeat scans of the same keyword don't cost a
   live lookup at all.
 - **Block detection** (`looksBlocked()`): checks page title/URL for

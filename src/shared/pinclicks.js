@@ -47,19 +47,34 @@ function saveBreaker(b) {
 // itself was much shorter-lived than the cooldown assumed. 30min still respects a
 // real detected block (never reduce to ~1min — that's indistinguishable from
 // normal between-action pacing and defeats the point of a breaker) but doesn't
-// hold the account hostage for a day on a guess. Revisit again with more real
-// incident data if 30min turns out too short (re-blocks quickly) or too
-// conservative (long confirmed-clear periods still refused).
-const LIVE = { MAX_HOUR: 12, MAX_DAY: 40, COOLDOWN_MS: 30 * 60 * 1000 };
+// hold the account hostage for a day on a guess.
+//
+// MAX_HOUR/MAX_DAY (was 12/hour, 40/day — "both audits insisted", from the
+// original cross-AI review) REMOVED 2026-07-09 by owner decision, after a full
+// day of real live testing produced zero NEW blocks from the pacing itself (the
+// one real block that day came from an ad-hoc script bypassing this file's safe
+// launch pattern entirely, not from exceeding a count). The actual anti-spam
+// mechanism was never the count — it's the human-like pacing below (15-35s
+// gaps, randomized typing) — a proactive numeric ceiling on top of that was
+// redundant caution, not the real safety net. What's NOT removed: the reactive
+// cooldown above still fires on an ACTUALLY DETECTED block — that's not a
+// preemptive limit, it's the recovery response when something genuinely goes
+// wrong, and stays regardless of how clean the track record is.
+const LIVE = { COOLDOWN_MS: 30 * 60 * 1000 };
 function liveBudgetLeft(now) {
   const b = loadBreaker();
   if (now < b.blockedUntil) return 0;
-  b.hour = b.hour.filter(t => now - t < 3600e3);
+  return Infinity;
+}
+// hour/day are no longer used to gate anything (the count ceiling was removed
+// above), kept only as a rolling 24h visibility log — self-pruned here so the
+// breaker file doesn't grow unbounded now that nothing else prunes it.
+function liveTick(now) {
+  const b = loadBreaker();
+  b.hour.push(now); b.day.push(now);
   b.day = b.day.filter(t => now - t < 86400e3);
   saveBreaker(b);
-  return Math.min(LIVE.MAX_HOUR - b.hour.length, LIVE.MAX_DAY - b.day.length);
 }
-function liveTick(now) { const b = loadBreaker(); b.hour.push(now); b.day.push(now); saveBreaker(b); }
 function tripBreaker(now) { const b = loadBreaker(); b.blockedUntil = now + LIVE.COOLDOWN_MS; saveBreaker(b); }
 
 // Per-keyword cache. PinClicks volumes are monthly-ish, so a few days is safe — and
