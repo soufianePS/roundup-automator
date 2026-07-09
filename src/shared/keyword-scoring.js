@@ -354,9 +354,17 @@ export function cheapWinnability(row, ctx = {}) {
 }
 
 /** Normalized stem for clustering (bag-of-words, drop stopwords). */
+// Real leak found 2026-07-09: "peach cobbler crock pot" and "crockpot peach
+// cobbler" are the identical recipe but clustered as two different "dishes"
+// because "crock pot" (two words) and "crockpot" (one word) tokenize
+// differently. Normalize known compound-word spacing variants before
+// tokenizing so they collapse to the same dish cluster.
+const COMPOUND_NORMALIZE = [[/\bcrock\s*pot\b/g, 'crockpot']];
 function stem(keyword) {
   const stop = new Set(['the', 'a', 'an', 'for', 'with', 'and', 'to', 'of', 'in', 'easy', 'best', 'recipe', 'recipes', 'ideas']);
-  return String(keyword || '').toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/)
+  let norm = String(keyword || '').toLowerCase();
+  for (const [re, rep] of COMPOUND_NORMALIZE) norm = norm.replace(re, rep);
+  return norm.replace(/[^\w\s]/g, '').split(/\s+/)
     .filter(t => t && !stop.has(t)).sort().join(' ');
 }
 
@@ -424,7 +432,14 @@ export function buildShortlist(rows, opts = {}) {
  * @param opts  { exclude, volMin, volMax, maxPerDish=1, limit=12 }
  * @returns [{keyword, volume, cheapCompetition, cheapWinnability, predict, postType, annotations, dish}]
  */
-const OFF_TOPIC_FOR_FOOD = /\bnails?\b|\bbirthday\b|\bparty (?:decor|outfit|theme)|\boutfit\b|\bdress\b|\bhair(style)?\b|\bmakeup\b|\bnursery\b|\bwallpaper\b|\btattoo\b/;
+// Added 2026-07-09 after a real leak: "princess peach halloween costume",
+// "mario and princess peach costume", "james and the giant peach costume" all
+// slipped into food-niche candidates for the "peach" seed (taxonomy was blank
+// for all of them, so only this regex stood between them and a live PinClicks
+// check — wasted budget on a costume, not a recipe). "Princess Peach" (the
+// game character) is a very common cross-topic collision for the "peach" food
+// seed specifically, so excluded by name in addition to the general "costume".
+const OFF_TOPIC_FOR_FOOD = /\bnails?\b|\bbirthday\b|\bparty (?:decor|outfit|theme)|\boutfit\b|\bdress\b|\bhair(style)?\b|\bmakeup\b|\bnursery\b|\bwallpaper\b|\btattoo\b|\bcostumes?\b|\bcosplay\b|princess peach|princesa peach|princesse peach/;
 
 export function trendTitles(rows, opts = {}) {
   const { exclude = new Set(), volMin = 500, volMax = 60000, limit = 12, taxonomyContains = null } = opts;
