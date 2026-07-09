@@ -358,11 +358,11 @@ server.tool('best_keywords_for_trend',
   'ONE-CALL automated pipeline for the "user gives me a trend" workflow: pass a trend name, get back RANKED best keyword titles for it — each with real competition (from PinClicks Top Pins), real annotations (PinClicks\' own Related Interests), and real timing (trend_curves verdict) — sorted lowest-competition-first. Internally composes query_keyword_bank/trend_titles (offline, free) + pinclicks_enrich withTopPins (live, capped, cached) + trend_curves (Trends API) — same safety budget and cache as calling them separately, so this does NOT bypass the Cloudflare circuit breaker. Does NOT auto-save (still call save_keyword_score yourself for the ones worth keeping, parent_trend = the trend you passed in) — this tool is discovery + scoring only. If the trend isn\'t banked yet, returns a note telling you to pinclicks_export_seeds([trend]) first. If live PinClicks budget is exhausted/blocked, still returns whatever the cache + bank can offer, clearly marked.',
   {
     trend: z.string().min(1),
-    max: z.number().int().optional().describe('How many candidates to live-check + rank (default 6, cap 8).'),
+    max: z.number().int().optional().describe('How many candidates to live-check + rank (default 10, cap 12 — matches the real enforced circuit breaker, not an extra self-imposed limit; raised 2026-07-09 after a real incident where a too-low default caused only 4 of 12 genuinely promising candidates to get checked for one trend).'),
     niche: z.enum(['recipe', 'home']).optional(),
   },
   wrap(async ({ trend, max, niche }) => {
-    const cap = Math.min(max ?? 6, 8);
+    const cap = Math.min(max ?? 10, 12);
     const bankRows = KeywordBank.query({ like: trend, minVolume: 0, limit: 500 });
     if (!bankRows.length) {
       return { trend, candidates: [], note: `No bank data for "${trend}" yet. Call pinclicks_export_seeds(["${trend}"]) first (live, human-paced, one-time per trend), then retry this call.` };

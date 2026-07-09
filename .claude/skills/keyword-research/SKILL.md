@@ -150,19 +150,37 @@ The efficient path separates cheap bulk *collection* from free *analysis*:
    `cheapCompetition`, `cheapWinnability`, `predict`. **Do NOT run a live check on
    anything it marks `predict:"MAYBE"` with low `cheapWinnability`.** (Prefer this over
    many `query_keyword_bank` calls — it saves your tokens.)
-4. **`pinclicks_enrich(topFew, {withTopPins:true, niche})`** — live Top-Pins verdict on
-   ONLY the best ~5 from step 3. **HARD BUDGET: at most ~6 live lookups and ONE pass —
-   do NOT pivot round after round.** If fewer than asked pass, return fewer (see below).
-   The app also enforces a circuit breaker (caps live visits, 24h cooldown after a
-   block), so respect a `budgetExhausted`/`blocked` result and stop.
-   **BAIL OUT OF A DEAD TREND FAST — this is critical when covering multiple trends
-   in one run.** The live budget is shared across ALL trends in the request, so
-   spending it on one bad trend starves the others. If the first **2–3** checks under
-   a trend all come back LOCKED, STOP checking more candidates from that trend — move
-   on to the next trend instead. Do not exhaust a trend's whole candidate list hoping
-   the next one is different; that burns the shared budget and leaves fewer or zero
-   checks for trends that might actually have winners. (Observed: one dead trend ate
-   7 of ~12 available checks in a single run, leaving almost nothing for the rest.)
+4. **`pinclicks_enrich(topFew, {withTopPins:true, niche})`** — live Top-Pins verdict.
+   **BUDGET: up to ~10-12 live lookups per hour (matches the actual enforced circuit
+   breaker — see below), not a self-imposed "~6 total".** A stricter "~6 hard budget"
+   guideline used to be here and caused a real, confirmed problem (2026-07-09): a
+   session that explored 3 live-checked trends (2 + 1 + 4 = 7 lookups) stopped at
+   exactly that point, even though the offline filter had predicted **12 WINNABLE
+   candidates for the 3rd trend alone** ("butternut squash soup") and only 4 had been
+   checked — 8 promising candidates (some with BETTER volume than what got checked,
+   e.g. "crockpot butternut squash soup" vol 2971 vs. checked "sheet pan roasted" vol
+   978) were left completely untested. The user correctly noticed and complained: "he
+   still give me just 1 keyword per trend". Don't repeat this — the app enforces the
+   REAL safety limit in code (12/hour, 40/day, persisted circuit breaker); you don't
+   need a tighter self-imposed cap on top of it. Respect a `budgetExhausted`/`blocked`
+   result and stop when it actually happens — don't pre-emptively ration far below the
+   real limit "just in case".
+   **PRIORITIZE DEPTH OVER BREADTH.** The same incident also explored 8 DIFFERENT
+   trend seeds via `trend_titles` (fall baking, halloween cocktails, canning pears,
+   huckleberry, nectarine, butternut squash, butternut squash soup, sourdough
+   focaccia) when the user likely asked for far fewer — spreading the live budget so
+   thin that most trends got 1-4 checks and some (huckleberry, nectarine, sourdough
+   focaccia, fall baking) got explored offline but NEVER live-checked at all. Pick
+   your N trends FIRST (matching what the user asked for), commit to them, and check
+   most of each one's genuinely-promising candidates before considering a new seed —
+   don't sample broadly across many more seeds than requested.
+   **BAIL OUT OF A DEAD TREND FAST — still applies.** The live budget is shared across
+   ALL trends in the request, so spending it on one bad trend starves the others. If
+   the first **2–3** checks under a trend all come back LOCKED, STOP checking more
+   candidates from THAT trend — move to the next trend. This is different from the
+   butternut-squash-soup incident above: that trend was NOT dead (it had a WINNABLE
+   result mixed in), so bailing didn't apply — the fix there is checking more of a
+   promising trend's candidates, not fewer.
 
 **Legacy live path** (`pinclicks_enrich` without a bank) still works but is slower — the
 bank is preferred. RULES (PinClicks is behind Cloudflare and WILL block bulk automation):
