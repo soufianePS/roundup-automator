@@ -12,11 +12,12 @@
     "requireCredit": true
   },
   "opportunityRubricWeights": {
-    "demand": 0.25,
-    "momentum": 0.25,
-    "competition": 0.30,
-    "seasonalTiming": 0.15,
-    "fit": 0.05
+    "_note": "Not read by code — reference only, must match .claude/skills/keyword-research/SKILL.md (source of truth). competition is a MULTIPLIER on the base score (a gate for a brand-new, zero-trust Pinterest account), not a linear weight alongside the others — see the skill file's 'competition is a GATE, not an add-on' section.",
+    "demand": 0.20,
+    "ctr_intent": 0.25,
+    "seasonalTiming": 0.20,
+    "momentum": 0.20,
+    "fit": 0.15
   },
   "pinterest": {
     "pinsPerArticle": 5,
