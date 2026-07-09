@@ -193,6 +193,51 @@ export async function topPinsFor(page, keyword, { niche = 'recipe' } = {}) {
 }
 
 /**
+ * Click into the top pins from an ALREADY-SCRAPED Top Pins page (call right after
+ * topPinsFor(), same page, don't re-navigate) to collect each pin's real
+ * "Annotated Interests" — confirmed live 2026-07-09 by direct owner verification:
+ * click a pin row → a sidebar opens showing "Annotated Interests" with Pinterest's
+ * real tag list for that exact pin.
+ *
+ * ⚠ NOT YET LIVE-TESTED. Written from the described structure (sidebar heading
+ * "Annotated Interests", tag list beneath it) — the exact click target and sidebar
+ * selectors are a reasonable first guess, not verified against the real DOM. The
+ * circuit breaker was in cooldown (until 2026-07-09 23:02 UTC, from the 2026-07-08
+ * block) at the time this was written, so live verification was deliberately
+ * deferred rather than testing against a profile mid-cooldown. Verify + fix
+ * selectors on the FIRST real call once the breaker clears, using page.screenshot()
+ * to confirm the sidebar actually opened before trusting the scraped list.
+ *
+ * Only call this for keywords that already passed the competition read
+ * (WINNABLE/maybe) — never spend the extra per-pin cost on a LOCKED keyword.
+ */
+export async function annotationsForTopPins(page, { max = 5 } = {}) {
+  const rows = await page.$$('table tbody tr');
+  const out = [];
+  for (let i = 0; i < Math.min(rows.length, max); i++) {
+    try {
+      await rows[i].click();
+      await sleep(rand(2000, 4000));
+      const annotations = await page.evaluate(() => {
+        const heading = [...document.querySelectorAll('*')].find(el =>
+          el.children.length === 0 && /annotated interests/i.test(el.textContent || ''));
+        if (!heading) return [];
+        const panel = heading.closest('[class*="sidebar"], [class*="panel"], aside') || heading.parentElement?.parentElement;
+        if (!panel) return [];
+        return [...panel.querySelectorAll('li, [class*="tag"], [class*="chip"], [class*="annotation"]')]
+          .map(el => (el.textContent || '').trim()).filter(t => t && t.length < 60).slice(0, 20);
+      });
+      out.push({ index: i, annotations });
+      await page.keyboard.press('Escape').catch(() => {}); // close sidebar — selector unverified, Escape is a safe generic fallback
+      await sleep(rand(1500, 3000));
+    } catch (e) {
+      Logger.warn(`[pinclicks] annotation click failed for pin ${i}: ${e.message}`);
+    }
+  }
+  return out;
+}
+
+/**
  * Enrich a shortlist of keywords with PinClicks volume + related terms.
  * @param {string[]} keywords  the shortlist (capped)
  * @param {object} opts { max=8, minDelayMs=18000, maxDelayMs=35000 }
