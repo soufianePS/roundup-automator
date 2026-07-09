@@ -118,42 +118,18 @@ function normTokens(str) {
     .map(w => (w.length > 3 && /s$/.test(w) && !/ss$/.test(w)) ? w.replace(/es$/, '').replace(/s$/, '') : w);
 }
 
-/** "Go inside" a keyword → scrape Top Pins (title, domain, date, saves) + verdict. */
-export async function topPinsFor(page, keyword, { niche = 'recipe' } = {}) {
-  await page.goto('https://app.pinclicks.com/pins?search=' + encodeURIComponent(keyword), { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
-  await sleep(rand(7000, 10000));
-  if (looksBlocked(await page.title(), page.url())) return { blocked: true };
-
-  const pins = await page.$$eval('table tbody tr', (trs) => {
-    const rows = [];
-    for (const tr of trs.slice(0, 10)) {
-      const cells = [...tr.querySelectorAll('td')].map(td => (td.textContent || '').trim());
-      const rowText = cells.join(' ');
-      const domain = (rowText.match(/([a-z0-9-]+\.(?:com|net|org|co|us|ca|uk|blog))/i) || [])[1] || '';
-      const date = (rowText.match(/[A-Z][a-z]{2}\s+\d{1,2},\s+\d{4}/) || [])[0] || '';
-      // title = text after "Open preview" and before the domain (strip the checkbox label)
-      let title = rowText
-        .replace(/Select\/deselect item \d+ for bulk actions\.?/i, '')
-        .replace(/Open preview/i, '').trim();
-      if (domain) title = title.slice(0, title.indexOf(domain));
-      title = title.replace(/\s+/g, ' ').trim().slice(0, 90);
-      // saves = largest plain integer among cells (pin-id lives in an aria-label, not a cell)
-      let saves = 0;
-      for (const c of cells) { const n = c.replace(/,/g, ''); if (/^\d{1,7}$/.test(n)) saves = Math.max(saves, parseInt(n, 10)); }
-      if (title) rows.push({ title, domain, date, saves });
-    }
-    return rows;
-  }).catch(() => []);
-  if (!pins.length) return { blocked: false, pins: [], competition: 0.1, verdict: 'empty SERP — likely wide open (verify keyword is real)' };
-
-  // derive signals
+// Shared by topPinsFor() (DOM-scrape) and topPinsForExport() (export-CSV based)
+// — takes normalized pins [{title, domain, date|ageMonths, saves}] and computes
+// the same competition score either way.
+function scoreCompetition(pins, keyword, niche) {
+  if (!pins.length) return { pins: [], competition: 0.1, verdict: 'empty SERP — likely wide open (verify keyword is real)', signals: {} };
   const nowMs = Date.parse('2026-07-06'); // stamped; scripts can't use Date.now()
   const kwWords = normTokens(keyword);
   let exactTop5 = 0, freshHighSave = 0, staleCount = 0, bigMedia = 0, freshBigMedia = 0, staleBigMedia = 0, roundupCount = 0;
   const savesArr = [];
   pins.forEach((p, i) => {
     savesArr.push(p.saves);
-    const ageMonths = p.date ? Math.max(0.5, (nowMs - Date.parse(p.date)) / (30 * 864e5)) : 24;
+    const ageMonths = p.ageMonths ?? (p.date ? Math.max(0.5, (nowMs - Date.parse(p.date)) / (30 * 864e5)) : 24);
     const velocity = p.saves / ageMonths;
     // Token-set match, not substring — substring wrongly matched "cake" inside
     // "cupcake". Normalized (stop words stripped, plurals stemmed) so "recipes"
@@ -163,7 +139,7 @@ export async function topPinsFor(page, keyword, { niche = 'recipe' } = {}) {
     if (i < 5 && exact >= 0.7) exactTop5++;
     if (ageMonths < 3 && p.saves > 500) freshHighSave++;
     if (ageMonths > 12) staleCount++;
-    const isBigMedia = BIG_MEDIA.test(p.domain);
+    const isBigMedia = BIG_MEDIA.test(p.domain || '');
     if (isBigMedia) {
       bigMedia++;
       // A single FRESH big-media pin is a near-unbeatable wall (domain authority +
@@ -195,11 +171,44 @@ export async function topPinsFor(page, keyword, { niche = 'recipe' } = {}) {
 
   const verdict = comp <= 0.35 ? 'WINNABLE' : comp <= 0.6 ? 'maybe (needs a better angle)' : 'LOCKED — skip / go longer-tail';
   return {
-    blocked: false, pins,
+    pins,
     competition: Math.round(comp * 100) / 100,
     verdict,
     signals: { medianSaves: median, exactMatchTop5: exactTop5, freshHighSave, staleCount, bigMedia, freshBigMedia, staleBigMedia, weakPins: weak, roundupCount },
   };
+}
+
+/**
+ * ⚠ SUPERSEDED by topPinsForExport() below for real usage — kept as a fallback
+ * for if the export flow ever breaks (e.g. PinClicks changes the export UI).
+ * "Go inside" a keyword → scrape Top Pins (title, domain, date, saves) + verdict.
+ */
+export async function topPinsFor(page, keyword, { niche = 'recipe' } = {}) {
+  await page.goto('https://app.pinclicks.com/pins?search=' + encodeURIComponent(keyword), { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
+  await sleep(rand(7000, 10000));
+  if (looksBlocked(await page.title(), page.url())) return { blocked: true };
+
+  const pins = await page.$$eval('table tbody tr', (trs) => {
+    const rows = [];
+    for (const tr of trs.slice(0, 10)) {
+      const cells = [...tr.querySelectorAll('td')].map(td => (td.textContent || '').trim());
+      const rowText = cells.join(' ');
+      const domain = (rowText.match(/([a-z0-9-]+\.(?:com|net|org|co|us|ca|uk|blog))/i) || [])[1] || '';
+      const date = (rowText.match(/[A-Z][a-z]{2}\s+\d{1,2},\s+\d{4}/) || [])[0] || '';
+      // title = text after "Open preview" and before the domain (strip the checkbox label)
+      let title = rowText
+        .replace(/Select\/deselect item \d+ for bulk actions\.?/i, '')
+        .replace(/Open preview/i, '').trim();
+      if (domain) title = title.slice(0, title.indexOf(domain));
+      title = title.replace(/\s+/g, ' ').trim().slice(0, 90);
+      // saves = largest plain integer among cells (pin-id lives in an aria-label, not a cell)
+      let saves = 0;
+      for (const c of cells) { const n = c.replace(/,/g, ''); if (/^\d{1,7}$/.test(n)) saves = Math.max(saves, parseInt(n, 10)); }
+      if (title) rows.push({ title, domain, date, saves });
+    }
+    return rows;
+  }).catch(() => []);
+  return { blocked: false, ...scoreCompetition(pins, keyword, niche) };
 }
 
 /**
@@ -294,28 +303,6 @@ export async function annotationsForTopPins(page, { max = 5 } = {}) {
 
 const EXPORTS_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'data', 'exports');
 
-/**
- * PREFERRED annotations method (2026-07-09, owner-confirmed): Top Pins has TWO
- * export buttons — "Pin Data" export and "Annotation Interests" export — giving
- * richer per-pin data + real annotations in one click each, same safe pattern as
- * Keyword Explorer's export (click Export → download → parse CSV), NOT per-pin
- * clicking. This supersedes annotationsForTopPins() above as the primary method —
- * one page + two button clicks beats clicking into 3-5 individual pins.
- *
- * ⚠ STILL NOT LIVE-TESTED (the "download the CSV and read it" part). What IS
- * confirmed live (2026-07-09): the button labels are exactly "Export", "Pin
- * Data", "Annotated Interests" (verified via a real page inspection), and the
- * two-step click (Export first, then the specific option) is now built in —
- * the original version tried to click "Pin Data"/"Annotated Interests" directly
- * without opening the dropdown, which was wrong. What's NOT yet confirmed: that
- * clicking these actually triggers a file download (vs. e.g. opening a modal or
- * requiring a date-range picker first) and the resulting CSV's column names.
- *
- * Call this INSTEAD of (not in addition to) the plain topPinsFor() DOM-scrape for
- * keywords that matter enough to check — it should replace that function's table
- * scrape once verified, since the exported CSV will have more reliable data than
- * scraping rendered `<table>` text.
- */
 // Maps the "Pin Data" export's header row to structured objects. Confirmed live
 // 2026-07-09 — real header seen: ID,Title,URL,"Pin Score",Saves,Position,"Is
 // Repin","Created At",Comments,Repins,Reactions,"Keyword Annotations","Image
@@ -366,34 +353,86 @@ function parsePinDataCSV(csvText) {
  * annotations, so it may be redundant; only worth checking if Pin Data's
  * annotations ever turn out incomplete.
  *
- * This should REPLACE topPinsFor()'s DOM-table-scrape + competition formula input
- * once wired into enrichKeywords — richer, more accurate, and no fragile
- * `<table>` text parsing needed.
+ * This is the raw export utility (real pin data, no domain field, no scoring) —
+ * for a real competition read wired into the scoring formula, use
+ * topPinsForExport() below instead, which also merges in the domain (needed for
+ * big-media detection, missing from this CSV) and runs the same scorer topPinsFor
+ * used, on richer data.
  */
-export async function exportTopPins(page, keyword) {
+// Assumes the page is ALREADY on the Top Pins results for the keyword — no
+// navigation here, so this can be reused by both the standalone export and the
+// combined scorer below without a duplicate page load.
+async function downloadPinDataCSV(page, keyword) {
   mkdirSync(EXPORTS_DIR, { recursive: true });
+  const safe = keyword.replace(/[^a-z0-9]+/gi, '-');
+  await page.getByRole('button', { name: /^export$/i }).first().click({ force: true, timeout: 10000 });
+  await sleep(rand(1000, 2000));
+  const pinDataOpt = page.getByText('Pin Data', { exact: true }).first();
+  const [dl] = await Promise.all([
+    page.waitForEvent('download', { timeout: 25000 }),
+    pinDataOpt.click({ force: true, timeout: 10000 }),
+  ]);
+  const fp = join(EXPORTS_DIR, `toppins-${safe}-pindata.csv`);
+  await dl.saveAs(fp);
+  return parsePinDataCSV(readFileSync(fp, 'utf8'));
+}
+
+export async function exportTopPins(page, keyword) {
   await page.goto('https://app.pinclicks.com/pins?search=' + encodeURIComponent(keyword), { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
   await sleep(rand(7000, 10000));
   if (looksBlocked(await page.title(), page.url())) return { blocked: true };
 
-  const safe = keyword.replace(/[^a-z0-9]+/gi, '-');
   let pinData = null;
-  try {
-    await page.getByRole('button', { name: /^export$/i }).first().click({ force: true, timeout: 10000 });
-    await sleep(rand(1000, 2000));
-    const pinDataOpt = page.getByText('Pin Data', { exact: true }).first();
-    const [dl] = await Promise.all([
-      page.waitForEvent('download', { timeout: 25000 }),
-      pinDataOpt.click({ force: true, timeout: 10000 }),
-    ]);
-    const fp = join(EXPORTS_DIR, `toppins-${safe}-pindata.csv`);
-    await dl.saveAs(fp);
-    pinData = parsePinDataCSV(readFileSync(fp, 'utf8'));
-  } catch (e) {
-    Logger.warn(`[pinclicks] Pin Data export failed for "${keyword}": ${e.message.split('\n')[0]}`);
-  }
+  try { pinData = await downloadPinDataCSV(page, keyword); }
+  catch (e) { Logger.warn(`[pinclicks] Pin Data export failed for "${keyword}": ${e.message.split('\n')[0]}`); }
 
   return { blocked: false, keyword, pins: pinData };
+}
+
+/**
+ * THE function to use for a real competition read — combines the export's
+ * accurate saves/dates/annotations with the domain field (needed for big-media
+ * detection, not present in the CSV) scraped from the same already-loaded table,
+ * then runs it through the same scoreCompetition() used by the old DOM-only
+ * topPinsFor(). One page load, one domain scrape (free — already-rendered DOM,
+ * no extra request), one Export click.
+ */
+export async function topPinsForExport(page, keyword, { niche = 'recipe' } = {}) {
+  await page.goto('https://app.pinclicks.com/pins?search=' + encodeURIComponent(keyword), { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
+  await sleep(rand(7000, 10000));
+  if (looksBlocked(await page.title(), page.url())) return { blocked: true };
+
+  // Domain-only scrape (position-ordered, same as topPinsFor's table read) —
+  // everything else comes from the export, which doesn't include the outbound
+  // destination domain.
+  const domains = await page.$$eval('table tbody tr', (trs) =>
+    trs.slice(0, 25).map(tr => {
+      const rowText = [...tr.querySelectorAll('td')].map(td => (td.textContent || '').trim()).join(' ');
+      return (rowText.match(/([a-z0-9-]+\.(?:com|net|org|co|us|ca|uk|blog))/i) || [])[1] || '';
+    })
+  ).catch(() => []);
+
+  let exported = null;
+  try { exported = await downloadPinDataCSV(page, keyword); }
+  catch (e) { Logger.warn(`[pinclicks] Pin Data export failed for "${keyword}": ${e.message.split('\n')[0]}`); }
+  if (!exported) return { blocked: false, pins: [], competition: 0.4, verdict: 'export failed — fall back to topPinsFor', signals: {} };
+
+  // Merge by position (both are rank-ordered 1..N) — pins from the export
+  // already carry real saves/date/annotations; domain is the only thing that
+  // needs merging in.
+  const merged = exported.map((p, i) => ({
+    title: p.title, saves: p.saves, date: p.createdAt, domain: domains[i] || '',
+    annotations: p.annotations, pinScore: p.pinScore, url: p.url,
+  }));
+  const scored = scoreCompetition(merged, keyword, niche);
+  // Surface the most common real annotations across the top pins as a bonus
+  // signal — useful for writing the actual title/description/hashtags, not
+  // just judging competition.
+  const annotationCounts = new Map();
+  for (const p of merged) for (const a of (p.annotations || [])) annotationCounts.set(a, (annotationCounts.get(a) || 0) + 1);
+  const topAnnotations = [...annotationCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 15).map(([a]) => a);
+
+  return { blocked: false, ...scored, topAnnotations };
 }
 
 /**
@@ -471,15 +510,22 @@ export async function enrichKeywords(keywords, opts = {}) {
         volume: self?.volume ?? null,
         related: rows.filter(r => r.keyword !== (self?.keyword)).slice(0, 12),
       };
-      // optionally "go inside" → Top Pins competition read
+      // optionally "go inside" → Top Pins competition read. Uses the export-based
+      // reader (real accurate saves/dates + real per-pin annotations), falling
+      // back to the plain DOM scrape only if the export itself fails.
       if (withTopPins) {
         liveTick(Date.now());   // count this Top-Pins visit against the budget
-        const tp = await topPinsFor(page, kw, { niche });
+        let tp = await topPinsForExport(page, kw, { niche });
+        if (!tp.blocked && (!tp.pins || !tp.pins.length) && tp.verdict === 'export failed — fall back to topPinsFor') {
+          Logger.warn(`[pinclicks] export failed for "${kw}", falling back to DOM scrape`);
+          tp = await topPinsFor(page, kw, { niche });
+        }
         if (tp.blocked) { blocked = true; tripBreaker(Date.now()); Logger.warn(`[pinclicks] blocked in Top Pins for "${kw}" — breaker tripped`); results.push(rec); cachePut(kw, rec); break; }
         rec.competition = tp.competition;
         rec.verdict = tp.verdict;
         rec.topPins = tp.signals;
         rec.topPinsSample = (tp.pins || []).slice(0, 5).map(p => ({ title: p.title.slice(0, 60), domain: p.domain, saves: p.saves, ageMonths: p.ageMonths }));
+        if (tp.topAnnotations?.length) rec.topPinAnnotations = tp.topAnnotations; // real per-pin tags from pins actually ranking for this keyword
         Logger.info(`[pinclicks] ${kw} → vol ${self?.volume ?? '?'} | comp ${tp.competition} ${tp.verdict} | medSaves ${tp.signals?.medianSaves}, exact ${tp.signals?.exactMatchTop5}/5 (${i + 1}/${list.length})`);
       } else {
         Logger.info(`[pinclicks] ${kw} → vol ${self?.volume ?? '?'}, ${rows.length} rows (${i + 1}/${list.length})`);
