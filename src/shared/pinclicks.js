@@ -41,7 +41,16 @@ function loadBreaker() {
 function saveBreaker(b) {
   try { mkdirSync(BREAKER_DIR, { recursive: true }); writeFileSync(BREAKER_FILE, JSON.stringify(b)); } catch {}
 }
-const LIVE = { MAX_HOUR: 12, MAX_DAY: 40, COOLDOWN_MS: 24 * 3600 * 1000 };
+// COOLDOWN_MS was 24h — changed 2026-07-09 to 30min after a real incident showed
+// 24h was overly conservative: a block detected on 2026-07-08 had fully cleared by
+// the next morning's live test (clean export, no re-block), meaning the block
+// itself was much shorter-lived than the cooldown assumed. 30min still respects a
+// real detected block (never reduce to ~1min — that's indistinguishable from
+// normal between-action pacing and defeats the point of a breaker) but doesn't
+// hold the account hostage for a day on a guess. Revisit again with more real
+// incident data if 30min turns out too short (re-blocks quickly) or too
+// conservative (long confirmed-clear periods still refused).
+const LIVE = { MAX_HOUR: 12, MAX_DAY: 40, COOLDOWN_MS: 30 * 60 * 1000 };
 function liveBudgetLeft(now) {
   const b = loadBreaker();
   if (now < b.blockedUntil) return 0;
