@@ -74,34 +74,51 @@ The SLOW, capped path — only for your FINAL shortlist (≤8 keywords), never a
 list. Two things it can do:
 - **Volume + related terms**: types the keyword into the search box, reads the
   rendered table row for that exact keyword + up to 12 related rows.
-- **Top Pins competition read** (`withTopPins: true`): navigates to
-  `app.pinclicks.com/pins?search=<keyword>`, scrapes the top 10 pin rows (title,
-  domain, date, saves), and computes a competition score:
+- **Top Pins competition read** (`withTopPins: true`, via `topPinsForExport()`):
+  navigates to Top Pins, exports the real "Pin Data" CSV (up to 25 real pins with
+  accurate saves/pin score/date/annotations), scrapes domain from the same
+  already-loaded table (the one field the export doesn't have), and computes:
   ```
+  STEP 1 — separate noise from real pins (fixed 2026-07-09, real finding: on
+  "pumpkin cream cheese muffins", 14 of 25 "Top Pins" were near-empty noise —
+  saves 1-5, pin score 0, all posted in the prior ~2 weeks, Pinterest temporarily
+  surfacing fresh content regardless of quality. Only 11 were genuinely tested.):
+    noise = saves < 10 AND (no pinScore data OR pinScore === 0)
+    real  = everything else
+
+  STEP 2 — rank REAL pins by STRENGTH (pinScore when available, else saves), NOT
+  raw position — real competitors are often scattered (e.g. positions 1, 2, 6, 7,
+  9, 16), not concentrated in "top 5" the way position-based counting assumed.
+
+  STEP 3 — score using the strength-ranked real pins:
   comp = 0.4
-    + 0.35 if exactMatchTop5 >= 4     (else -0.2 if <= 1) — token-set match, not
-                                        substring: stop words stripped, plurals
+    + 0.35 if exactMatchTop5 >= 4     (of the 5 STRONGEST real pins — token-set
+                                        match: stop words stripped, plurals
                                         stemmed, so "muffins" matches "muffin" and
-                                        "cake" no longer false-matches "cupcake"
+                                        "cake" no longer false-matches "cupcake")
+      else -0.2 if <= 1
     + 0.30 if freshHighSave >= 1      (a <3mo-old pin with >500 saves = a real incumbent)
-    + 0.20 if medianSaves > 1000      (else -0.2 if < 300 recipe / 150 home)
+    + 0.20 if medianSaves > 1000      (median of REAL pins only, else -0.2 if < 300 recipe / 150 home)
     + 0.30 if freshBigMedia >= 1      (a <6mo big-media pin — domain authority AND
                                         freshness both maxed = near-unbeatable)
-    - 0.15 if staleBigMedia >= 2      (fixed 2026-07-09, was a real bug: a >12mo
-                                        big-media pin holding rank on authority alone
-                                        is VULNERABLE, not a wall — Pinterest's own
-                                        ranking favors fresh pins; the old formula
-                                        penalized fresh and stale big-media
-                                        identically, which misclassified a stale-
-                                        big-media SERP as LOCKED when it's actually
-                                        a real opportunity)
-    - 0.15 if staleCount >= 3         (3+ pins >12mo old, any domain = opening)
-    - 0.15 if weakPins >= 3           (3+ pins under the save floor = thin competition)
+    - 0.15 if staleBigMedia >= 2      (a >12mo big-media pin holding rank on
+                                        authority alone is VULNERABLE, not a wall
+                                        — Pinterest favors fresh pins)
+    - 0.15 if staleCount >= 3         (3+ real pins >12mo old = opening)
+    - 0.15 if weakPins >= 3           (3+ real pins under the save floor = thin competition)
+    + 0.25 if strongIncumbents >= 2   (2+ pins with pinScore>=30 = a real proven wall)
+      else -0.15 if strongIncumbents === 0 AND real.length > 0  (zero proven pins
+                                        at all = wide open, regardless of how many
+                                        positions are technically filled)
+    - 0.10 if noiseCount >= 50% of total AND real.length <= 3   (SERP flooded with
+                                        untested pins, few real competitors —
+                                        Pinterest hasn't settled on a winner yet)
   clamped to [0.05, 1]
   verdict: <=0.35 WINNABLE | <=0.6 "maybe, needs a better angle" | >0.6 LOCKED
   ```
   This is the REAL competition signal — never guess competition from keyword
-  phrasing alone.
+  phrasing alone. Falls back to the old DOM-table-scrape (`topPinsFor()`, top 10
+  only, no pin score, no noise-filtering) only if the export itself fails.
 
 **Per-pin annotations — SOLVED, `exportTopPins(page, keyword)` in pinclicks.js,
 CONFIRMED WORKING end-to-end (2026-07-09), re-verified with a second independent
