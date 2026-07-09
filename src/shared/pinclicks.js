@@ -203,6 +203,11 @@ export async function topPinsFor(page, keyword, { niche = 'recipe' } = {}) {
 }
 
 /**
+ * ⚠ SUPERSEDED by exportTopPins() below — that function does everything this one
+ * was trying to do (real per-pin annotations) in one clean CSV download, already
+ * confirmed working end-to-end with two independent keywords. Use that instead.
+ * Kept here only as a documented dead-end / fallback if the export ever breaks.
+ *
  * Click into the top pins from an ALREADY-SCRAPED Top Pins page (call right after
  * topPinsFor(), same page, don't re-navigate) to collect each pin's real
  * "Annotated Interests" — confirmed live 2026-07-09 by direct owner AND agent
@@ -311,6 +316,60 @@ const EXPORTS_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'd
  * scrape once verified, since the exported CSV will have more reliable data than
  * scraping rendered `<table>` text.
  */
+// Maps the "Pin Data" export's header row to structured objects. Confirmed live
+// 2026-07-09 — real header seen: ID,Title,URL,"Pin Score",Saves,Position,"Is
+// Repin","Created At",Comments,Repins,Reactions,"Keyword Annotations","Image
+// URL","Board URL","Profile URL",Description
+function parsePinDataCSV(csvText) {
+  const rows = parseCSV(csvText);
+  if (!rows.length) return [];
+  const head = rows[0].map(h => h.trim().toLowerCase());
+  const idx = (name) => head.indexOf(name);
+  const iId = idx('id'), iTitle = idx('title'), iUrl = idx('url'), iScore = idx('pin score'),
+    iSaves = idx('saves'), iPos = idx('position'), iRepin = idx('is repin'), iCreated = idx('created at'),
+    iComments = idx('comments'), iRepins = idx('repins'), iReactions = idx('reactions'),
+    iAnnot = idx('keyword annotations'), iImg = idx('image url'), iBoard = idx('board url'),
+    iProfile = idx('profile url'), iDesc = idx('description');
+  const out = [];
+  for (let r = 1; r < rows.length; r++) {
+    const row = rows[r];
+    if (!row[iId]) continue;
+    out.push({
+      id: row[iId], title: (row[iTitle] || '').trim(), url: (row[iUrl] || '').trim(),
+      pinScore: Number(row[iScore]) || 0, saves: Number(row[iSaves]) || 0, position: Number(row[iPos]) || null,
+      isRepin: row[iRepin] === '1', createdAt: (row[iCreated] || '').trim(),
+      comments: Number(row[iComments]) || 0, repins: Number(row[iRepins]) || 0, reactions: Number(row[iReactions]) || 0,
+      annotations: (row[iAnnot] || '').split(',').map(s => s.trim()).filter(Boolean),
+      imageUrl: (row[iImg] || '').trim(), boardUrl: (row[iBoard] || '').trim(),
+      profileUrl: (row[iProfile] || '').trim(), description: (row[iDesc] || '').trim(),
+    });
+  }
+  return out;
+}
+
+/**
+ * CONFIRMED WORKING END-TO-END 2026-07-09 — real live test, real downloaded CSV,
+ * re-verified with a SECOND independent keyword ("gluten free fall baking") to
+ * confirm it's not a one-off fluke: 25 real pins returned, correctly structured,
+ * real per-pin annotations correctly parsed for all of them.
+ * One "Export" trigger button reveals "Pin Data" / "Annotated Interests" as text
+ * items (NOT `<button role>` elements — must use `getByText`, `getByRole('button')`
+ * finds nothing for them even though the DOM tag is actually `<button>`, likely an
+ * ARIA/accessible-name quirk). Clicking "Pin Data" downloads a CSV with EVERYTHING
+ * needed in one file — real accurate saves (confirmed far more accurate than the
+ * plain table scrape: 108,948 real saves vs a much lower table-row read for the
+ * same pin), pin score, position, created date, comments/repins/reactions, a
+ * `Keyword Annotations` column (real per-pin Pinterest tags, comma-separated —
+ * this alone answers the original "open a pin, see its keywords" question), image/
+ * board/profile URLs, and the pin's own description text. The separate "Annotated
+ * Interests" export was NOT tested — "Pin Data" alone already contains real
+ * annotations, so it may be redundant; only worth checking if Pin Data's
+ * annotations ever turn out incomplete.
+ *
+ * This should REPLACE topPinsFor()'s DOM-table-scrape + competition formula input
+ * once wired into enrichKeywords — richer, more accurate, and no fragile
+ * `<table>` text parsing needed.
+ */
 export async function exportTopPins(page, keyword) {
   mkdirSync(EXPORTS_DIR, { recursive: true });
   await page.goto('https://app.pinclicks.com/pins?search=' + encodeURIComponent(keyword), { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
@@ -318,37 +377,23 @@ export async function exportTopPins(page, keyword) {
   if (looksBlocked(await page.title(), page.url())) return { blocked: true };
 
   const safe = keyword.replace(/[^a-z0-9]+/gi, '-');
-  // Confirmed live 2026-07-09: there is ONE "Export" trigger button (top-right of
-  // the Top Pins page, next to "Track Keyword"); clicking it reveals "Pin Data"
-  // and "Annotated Interests" as two separate options — they exist as real
-  // <button> elements in the DOM even before "Export" is clicked (found via a
-  // flat page-wide button query), so they're likely a pre-mounted, hidden
-  // dropdown menu rather than lazily rendered. Click "Export" first to make the
-  // option interactable, THEN click the specific option — the previous version
-  // tried to click "Pin Data"/"Annotated Interests" directly without opening the
-  // dropdown first, which was never live-tested and likely would have hung
-  // waiting for a hidden element to become visible.
-  const downloadOne = async (nameRe, outSuffix) => {
-    const exportBtn = page.getByRole('button', { name: /^export$/i }).first();
-    if (!(await exportBtn.count())) return null;
-    await exportBtn.click({ force: true, timeout: 10000 });
+  let pinData = null;
+  try {
+    await page.getByRole('button', { name: /^export$/i }).first().click({ force: true, timeout: 10000 });
     await sleep(rand(1000, 2000));
-    const btn = page.getByRole('button', { name: nameRe }).first();
-    if (!(await btn.count())) return null;
-    const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 25000 }), btn.click({ force: true, timeout: 10000 })]);
-    const fp = join(EXPORTS_DIR, `toppins-${safe}-${outSuffix}.csv`);
+    const pinDataOpt = page.getByText('Pin Data', { exact: true }).first();
+    const [dl] = await Promise.all([
+      page.waitForEvent('download', { timeout: 25000 }),
+      pinDataOpt.click({ force: true, timeout: 10000 }),
+    ]);
+    const fp = join(EXPORTS_DIR, `toppins-${safe}-pindata.csv`);
     await dl.saveAs(fp);
-    return parseCSV(readFileSync(fp, 'utf8'));
-  };
+    pinData = parsePinDataCSV(readFileSync(fp, 'utf8'));
+  } catch (e) {
+    Logger.warn(`[pinclicks] Pin Data export failed for "${keyword}": ${e.message.split('\n')[0]}`);
+  }
 
-  let pinData = null, annotationData = null;
-  try { pinData = await downloadOne(/pin.*data|export.*pin/i, 'pindata'); }
-  catch (e) { Logger.warn(`[pinclicks] Pin Data export failed for "${keyword}": ${e.message.split('\n')[0]}`); }
-  await sleep(rand(3000, 6000));
-  try { annotationData = await downloadOne(/annotat/i, 'annotations'); }
-  catch (e) { Logger.warn(`[pinclicks] Annotation export failed for "${keyword}": ${e.message.split('\n')[0]}`); }
-
-  return { blocked: false, keyword, pinDataRows: pinData, annotationRows: annotationData };
+  return { blocked: false, keyword, pins: pinData };
 }
 
 /**
