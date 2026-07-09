@@ -92,6 +92,25 @@ function validatePublishBy(publish_by) {
   return null;
 }
 
+// SOFT check (warns, never blocks the save — a good title sometimes legitimately
+// paraphrases rather than quoting an annotation verbatim, and the skill explicitly
+// discourages keyword-stuffing). Catches the case where real annotations were
+// fetched (a live pinclicks_enrich withTopPins lookup, real cost paid) but then
+// completely ignored when writing the title/description — wasted signal, not a
+// hard error.
+const ANNOTATION_MATCH_STOP_WORDS = new Set(['a', 'an', 'the', 'for', 'to', 'of', 'in', 'and', 'with', 'on', 'is', 'are', 'your', 'recipe', 'recipes']);
+function annotationUsageWarning(k) {
+  if (!k.annotations || !k.annotations.length) return null;
+  const text = `${k.title_suggestion || ''} ${k.pin_description || ''}`.toLowerCase();
+  if (!text.trim()) return null; // nothing written yet to check against
+  const used = k.annotations.some(a => {
+    const words = String(a).toLowerCase().split(/\s+/).filter(w => w.length > 3 && !ANNOTATION_MATCH_STOP_WORDS.has(w));
+    return words.some(w => text.includes(w));
+  });
+  if (used) return null;
+  return `⚠ You fetched ${k.annotations.length} real Pinterest annotations for "${k.keyword}" (a live PinClicks lookup, real cost paid) but none of their words appear in title_suggestion or pin_description — that real signal is being thrown away. Consider naturally incorporating one (paraphrase is fine, just don't ignore them entirely).`;
+}
+
 server.tool('save_keyword_score',
   'Save a researched keyword with its opportunity score, sub-signals and annotations (the training data). REQUIRES publish_by to be the real verdict text from smart_timing (not a bare date) — call smart_timing(keyword, peak_month) first.',
   {
@@ -119,7 +138,9 @@ server.tool('save_keyword_score',
     const err = validatePublishBy(k.publish_by);
     if (err) throw new Error(err);
     pendingWinnables.delete(String(k.keyword).toLowerCase());
-    return { id: KeywordScores.save(k) };
+    const id = KeywordScores.save(k);
+    const warning = annotationUsageWarning(k);
+    return warning ? { id, ANNOTATION_USAGE_WARNING: warning } : { id };
   }));
 
 server.tool('check_unsaved_winnables',
