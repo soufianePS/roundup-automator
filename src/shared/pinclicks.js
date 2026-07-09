@@ -119,15 +119,46 @@ function normTokens(str) {
 }
 
 // Shared by topPinsFor() (DOM-scrape) and topPinsForExport() (export-CSV based)
-// — takes normalized pins [{title, domain, date|ageMonths, saves}] and computes
-// the same competition score either way.
-function scoreCompetition(pins, keyword, niche) {
+// — takes normalized pins [{title, domain, date|ageMonths, saves, pinScore?,
+// repins?, reactions?, comments?}] and computes the same competition score
+// either way. pinScore/repins/reactions/comments are only present when pins
+// came from the real export (topPinsForExport) — DOM-scrape fallback pins don't
+// have them, so all of this degrades gracefully to saves-only when absent.
+//
+// REDESIGNED 2026-07-09 after a real finding: raw Top-Pins POSITION is
+// misleading. A real audit of "pumpkin cream cheese muffins" showed 14 of 25
+// "Top Pins" were near-empty noise — saves 1-5, pinScore 0, all posted within
+// the prior ~2 weeks (Pinterest temporarily surfacing fresh content regardless
+// of quality) — while the genuine competitors (pinScore 50-100, thousands of
+// saves) were scattered across positions 1, 2, 6, 7, 9, 16, not concentrated in
+// "top 5" the way the old position-based exactTop5/median assumed. Counting
+// noise pins as if they were real competition (or letting them drag the median
+// down for the wrong reason) gave a misleading signal. Fixed by ranking pins by
+// real STRENGTH (pinScore when available, else saves) instead of raw position,
+// and separating "noise" (near-zero traction, likely just-posted) from "real"
+// pins before computing exactMatch/median/freshHighSave.
+export function scoreCompetition(pins, keyword, niche) {
   if (!pins.length) return { pins: [], competition: 0.1, verdict: 'empty SERP — likely wide open (verify keyword is real)', signals: {} };
   const nowMs = Date.parse('2026-07-06'); // stamped; scripts can't use Date.now()
   const kwWords = normTokens(keyword);
-  let exactTop5 = 0, freshHighSave = 0, staleCount = 0, bigMedia = 0, freshBigMedia = 0, staleBigMedia = 0, roundupCount = 0;
+  const hasPinScore = pins.some(p => p.pinScore != null);
+
+  // Noise = essentially untested — near-zero saves and (when we have it) zero
+  // pin score. These pins occupy a "position" but aren't real competition.
+  const isNoise = (p) => p.saves < 10 && (!hasPinScore || (p.pinScore || 0) === 0);
+  const real = pins.filter(p => !isNoise(p));
+  const noiseCount = pins.length - real.length;
+
+  // Rank the REAL pins by strength (pinScore when we have it — PinClicks' own
+  // composite ranking, more informative than raw position — else saves) so
+  // "top 5" means "the 5 strongest genuine competitors," not "whatever happened
+  // to render in slots 1-5 this load, noise included."
+  const strengthOf = (p) => hasPinScore ? (p.pinScore || 0) : p.saves;
+  const ranked = [...real].sort((a, b) => strengthOf(b) - strengthOf(a));
+
+  let exactTop5 = 0, freshHighSave = 0, staleCount = 0, bigMedia = 0, freshBigMedia = 0, staleBigMedia = 0, roundupCount = 0, strongIncumbents = 0;
   const savesArr = [];
-  pins.forEach((p, i) => {
+  ranked.forEach((p, i) => {
     savesArr.push(p.saves);
     const ageMonths = p.ageMonths ?? (p.date ? Math.max(0.5, (nowMs - Date.parse(p.date)) / (30 * 864e5)) : 24);
     const velocity = p.saves / ageMonths;
@@ -139,6 +170,7 @@ function scoreCompetition(pins, keyword, niche) {
     if (i < 5 && exact >= 0.7) exactTop5++;
     if (ageMonths < 3 && p.saves > 500) freshHighSave++;
     if (ageMonths > 12) staleCount++;
+    if (hasPinScore && p.pinScore >= 30) strongIncumbents++;
     const isBigMedia = BIG_MEDIA.test(p.domain || '');
     if (isBigMedia) {
       bigMedia++;
@@ -155,7 +187,7 @@ function scoreCompetition(pins, keyword, niche) {
     p.ageMonths = Math.round(ageMonths); p.velocity = Math.round(velocity);
   });
   const sorted = [...savesArr].sort((a, b) => a - b);
-  const median = sorted[Math.floor(sorted.length / 2)] || 0;
+  const median = sorted.length ? sorted[Math.floor(sorted.length / 2)] : 0;
   const weak = savesArr.filter(s => s < (niche === 'recipe' ? 150 : 100)).length;
 
   // competition estimate (0 open → 1 locked)
@@ -167,6 +199,15 @@ function scoreCompetition(pins, keyword, niche) {
   else if (staleBigMedia >= 2) comp -= 0.15; // stale big-media = vulnerable, not a wall
   if (staleCount >= 3) comp -= 0.15;
   if (weak >= 3) comp -= 0.15;
+  // Pin Score signals (only when the export gave us real scores):
+  if (hasPinScore) {
+    if (strongIncumbents >= 2) comp += 0.25;      // 2+ genuinely proven pins (score>=30) = real wall
+    else if (strongIncumbents === 0 && real.length > 0) comp -= 0.15; // zero proven pins at all = wide open regardless of how many positions are filled
+  }
+  // A SERP flooded with noise (many near-empty just-posted pins, few real
+  // competitors) is itself a wide-open signal — Pinterest hasn't settled on a
+  // winner for this query yet.
+  if (noiseCount >= pins.length * 0.5 && real.length <= 3) comp -= 0.1;
   comp = Math.max(0.05, Math.min(1, comp));
 
   const verdict = comp <= 0.35 ? 'WINNABLE' : comp <= 0.6 ? 'maybe (needs a better angle)' : 'LOCKED — skip / go longer-tail';
@@ -174,7 +215,7 @@ function scoreCompetition(pins, keyword, niche) {
     pins,
     competition: Math.round(comp * 100) / 100,
     verdict,
-    signals: { medianSaves: median, exactMatchTop5: exactTop5, freshHighSave, staleCount, bigMedia, freshBigMedia, staleBigMedia, weakPins: weak, roundupCount },
+    signals: { medianSaves: median, exactMatchTop5: exactTop5, freshHighSave, staleCount, bigMedia, freshBigMedia, staleBigMedia, weakPins: weak, roundupCount, strongIncumbents: hasPinScore ? strongIncumbents : undefined, noiseCount, realPinCount: real.length },
   };
 }
 
