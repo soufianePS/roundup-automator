@@ -499,7 +499,13 @@ Don't default every topic to a numbered listicle. Read what the user actually as
   article, and target the variations with different *pins*, not separate thin articles.
   So `add_topic` ONCE per cluster (the best exact-match title); note the sibling variations
   in `source_notes` as the pin angles. Never queue 4 near-duplicate topics.
-- **pin_description**: 2–3 natural sentences with the exact keyword once + 2–3 related
+- **Title length** (cross-checked via web research, 2026-07-09): Pinterest's hard cap
+  is 100 characters, but only the first ~30-40 show before mobile truncation — put
+  the exact keyword at the very START of `title_suggestion`, not buried after a hook.
+  A roundup's leading number doesn't violate this (it's part of the front-loaded
+  keyword phrase), but don't bury the real keyword behind a long clever preamble.
+- **pin_description**: 2–3 natural sentences (~220-232 characters reads well before
+  Pinterest truncates it) with the exact keyword once + 2–3 related
   terms **written as plain language, not a keyword list**. Pinterest is a search
   engine — sentence-form keywords rank; keyword-stuffing gets suppressed.
 - **hashtags**: **default to NONE.** Practitioner + Pinterest-rep consensus in 2025–26

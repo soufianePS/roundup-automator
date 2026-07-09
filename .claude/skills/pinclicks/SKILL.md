@@ -112,11 +112,23 @@ time):**
    feature described in conversation — not yet built, not yet located in the UI
    directly. Would need its own new function (e.g. `pinStatsFor(pinUrl)`) following
    the same safe pattern (headed browser, anti-detection args, human pacing, capped).
+3. **Hovering a Top Pins row may show annotations inline** — a second independent
+   research pass (2026-07-09) described hovering over top-ranking pins to reveal
+   their interest annotations directly, without navigating anywhere. If true, this
+   would be the CHEAPEST fix — no extra page load, no export/download flow, just a
+   `hover()` + read a tooltip/panel inside the existing `topPinsFor()` page. Check
+   this FIRST when unblocked, before the Export-button or Pin-Stats-tool leads above
+   (in likely order of implementation cost: hover < export button < separate tool).
 
-Do not assume either of these is implemented until actually built and verified live
-— this is a research lead, not a working feature. An investigation attempt on
-2026-07-08 was cut short by a real Cloudflare block before either could be checked
-directly in the UI (see incident below).
+These three leads may all describe the SAME underlying feature seen via different UI
+paths (PinClicks may expose annotations multiple ways), or PinClicks' UI may have
+changed between when each source was written. Do not assume any is implemented until
+actually built and verified live — these are research leads, not working features.
+An investigation attempt on 2026-07-08 was cut short by a real Cloudflare block
+before any could be checked directly in the UI (see incident below). When
+unblocked: check hover first (cheapest to verify), then Export button, then Pin
+Stats — stop as soon as one confirms real annotation data, no need to check all
+three if the first one works.
 
 ## Safety mechanics (all in `pinclicks.js`)
 
