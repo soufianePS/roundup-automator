@@ -99,9 +99,17 @@ async function scrapeTable(page) {
 
 const BIG_MEDIA = /thespruce|bhg|betterhomes|hgtv|apartmenttherapy|foodnetwork|marthastewart|allrecipes|delish|tasteofhome|goodhousekeeping|realsimple|southernliving|countryliving/i;
 const ROUNDUP_URL = /\/\d+-|\bideas\b|\bbest-|roundup|listicle|-recipes\b/i;
+// Pure grammatical filler only — NOT words like "easy"/"best"/"ideas" that carry
+// real click-intent/roundup-vs-single signal elsewhere in this app.
+const STOP_WORDS = new Set(['a', 'an', 'the', 'for', 'to', 'of', 'in', 'and', 'how', 'with', 'on', 'is', 'are', 'your']);
+function normTokens(str) {
+  return String(str).toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/)
+    .filter(w => w.length > 2 && !STOP_WORDS.has(w))
+    .map(w => (w.length > 3 && /s$/.test(w) && !/ss$/.test(w)) ? w.replace(/es$/, '').replace(/s$/, '') : w);
+}
 
 /** "Go inside" a keyword → scrape Top Pins (title, domain, date, saves) + verdict. */
-async function topPinsFor(page, keyword, { niche = 'recipe' } = {}) {
+export async function topPinsFor(page, keyword, { niche = 'recipe' } = {}) {
   await page.goto('https://app.pinclicks.com/pins?search=' + encodeURIComponent(keyword), { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
   await sleep(rand(7000, 10000));
   if (looksBlocked(await page.title(), page.url())) return { blocked: true };
@@ -130,19 +138,33 @@ async function topPinsFor(page, keyword, { niche = 'recipe' } = {}) {
 
   // derive signals
   const nowMs = Date.parse('2026-07-06'); // stamped; scripts can't use Date.now()
-  const kwWords = keyword.toLowerCase().split(/\s+/).filter(w => w.length > 2);
-  let exactTop5 = 0, freshHighSave = 0, staleCount = 0, bigMedia = 0, roundupCount = 0;
+  const kwWords = normTokens(keyword);
+  let exactTop5 = 0, freshHighSave = 0, staleCount = 0, bigMedia = 0, freshBigMedia = 0, staleBigMedia = 0, roundupCount = 0;
   const savesArr = [];
   pins.forEach((p, i) => {
     savesArr.push(p.saves);
     const ageMonths = p.date ? Math.max(0.5, (nowMs - Date.parse(p.date)) / (30 * 864e5)) : 24;
     const velocity = p.saves / ageMonths;
-    const tl = p.title.toLowerCase();
-    const exact = kwWords.filter(w => tl.includes(w)).length / kwWords.length;
+    // Token-set match, not substring — substring wrongly matched "cake" inside
+    // "cupcake". Normalized (stop words stripped, plurals stemmed) so "recipes"
+    // matches "recipe" and filler words don't inflate/deflate the score.
+    const tlWords = new Set(normTokens(p.title));
+    const exact = kwWords.length ? kwWords.filter(w => tlWords.has(w)).length / kwWords.length : 0;
     if (i < 5 && exact >= 0.7) exactTop5++;
     if (ageMonths < 3 && p.saves > 500) freshHighSave++;
     if (ageMonths > 12) staleCount++;
-    if (BIG_MEDIA.test(p.domain)) bigMedia++;
+    const isBigMedia = BIG_MEDIA.test(p.domain);
+    if (isBigMedia) {
+      bigMedia++;
+      // A single FRESH big-media pin is a near-unbeatable wall (domain authority +
+      // freshness both maxed). A STALE big-media pin is the opposite — Pinterest's
+      // 2026 ranking explicitly favors fresh pins, so an old big-media pin holding
+      // rank on authority alone is a vulnerable, winnable target, not a wall. The
+      // old formula penalized both identically, which misclassified stale-big-media
+      // SERPs as LOCKED when they're actually a real opportunity.
+      if (ageMonths < 6) freshBigMedia++;
+      else if (ageMonths > 12) staleBigMedia++;
+    }
     if (ROUNDUP_URL.test(p.title) || /\b\d{2}\b/.test(p.title)) roundupCount++;
     p.ageMonths = Math.round(ageMonths); p.velocity = Math.round(velocity);
   });
@@ -155,8 +177,9 @@ async function topPinsFor(page, keyword, { niche = 'recipe' } = {}) {
   if (exactTop5 >= 4) comp += 0.35; else if (exactTop5 <= 1) comp -= 0.2;
   if (freshHighSave >= 1) comp += 0.3;
   if (median > 1000) comp += 0.2; else if (median < (niche === 'recipe' ? 300 : 150)) comp -= 0.2;
+  if (freshBigMedia >= 1) comp += 0.3;   // fresh + big-media = near-unbeatable, hard lock
+  else if (staleBigMedia >= 2) comp -= 0.15; // stale big-media = vulnerable, not a wall
   if (staleCount >= 3) comp -= 0.15;
-  if (bigMedia >= 3) comp += 0.2;
   if (weak >= 3) comp -= 0.15;
   comp = Math.max(0.05, Math.min(1, comp));
 
@@ -165,7 +188,7 @@ async function topPinsFor(page, keyword, { niche = 'recipe' } = {}) {
     blocked: false, pins,
     competition: Math.round(comp * 100) / 100,
     verdict,
-    signals: { medianSaves: median, exactMatchTop5: exactTop5, freshHighSave, staleCount, bigMedia, weakPins: weak, roundupCount },
+    signals: { medianSaves: median, exactMatchTop5: exactTop5, freshHighSave, staleCount, bigMedia, freshBigMedia, staleBigMedia, weakPins: weak, roundupCount },
   };
 }
 
