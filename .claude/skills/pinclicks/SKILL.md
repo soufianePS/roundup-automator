@@ -116,16 +116,26 @@ Annotations` column (real per-pin Pinterest tags, comma-separated), image/board/
 profile URL, and the pin's own description. No second "Annotated Interests"
 export needed — "Pin Data" alone already has real annotations.
 
-This should REPLACE `topPinsFor()`'s DOM-table-scrape as the actual data source
-for the competition formula (not done yet this session — `exportTopPins()` exists
-standalone, not yet wired into `enrichKeywords()`). The old click-into-pin
-approach (`annotationsForTopPins()`) never got its extraction selector working
-after 7 live attempts and is now just a documented fallback, not the primary path.
+**FULLY WIRED IN (2026-07-09).** `topPinsForExport(page, keyword, opts)` combines
+the export's real saves/dates/annotations with the domain field (needed for
+big-media detection, missing from the CSV) scraped from the same already-loaded
+table, then runs it through the same `scoreCompetition()` the old DOM-only
+`topPinsFor()` used. `enrichKeywords({withTopPins:true})` now calls this as the
+PRIMARY path, falling back to the old DOM-scrape only if the export itself fails.
+Results carry a bonus `topPinAnnotations` field — the most common real annotations
+aggregated across all the ranking pins, useful for writing the actual title/
+description, not just judging competition. Verified live end-to-end through the
+real pipeline (not just the export function standalone): a real
+`enrichKeywords(['healthy fall baking recipes'], {withTopPins:true})` call
+returned a real competition score AND 15 real aggregated annotations in one go.
 
-Same human pacing as everywhere else in this skill applies to `exportTopPins()`
-too — same safe launch pattern, no exceptions. Only call it for keywords worth
-keeping (already passed the competition read) — never spend the extra cost on a
-keyword you're about to reject as LOCKED.
+The old click-into-pin approach (`annotationsForTopPins()`) never got its
+extraction selector working after 7 live attempts and is now just a documented
+fallback, not called anywhere in the real pipeline.
+
+Same human pacing as everywhere else in this skill applies to `topPinsForExport()`
+too — same safe launch pattern, no exceptions. It's called automatically by
+`pinclicks_enrich(withTopPins:true)` — you don't need to call it directly.
 
 ## Safety mechanics (all in `pinclicks.js`)
 

@@ -318,7 +318,7 @@ server.tool('pinclicks_enrich',
   {
     keywords: z.array(z.string()).min(1).max(8),
     max: z.number().int().optional().describe('Hard cap (default 8).'),
-    withTopPins: z.boolean().optional().describe('ALSO "go inside" each keyword → scrape Top Pins and return a real competition read: {competition 0-1, verdict, signals:{medianSaves, exactMatchTop5, freshHighSave, staleCount, bigMedia, weakPins}, topPinsSample}. Slower (adds a page load per keyword) but gives the exact-match-weakness + save-velocity judgment the skill needs. Recommended for the FINAL shortlist.'),
+    withTopPins: z.boolean().optional().describe('ALSO "go inside" each keyword → real Top Pins competition read via PinClicks\' own Pin Data export (not a fragile table-scrape): {competition 0-1, verdict, signals:{medianSaves, exactMatchTop5, freshHighSave, staleCount, bigMedia, freshBigMedia, staleBigMedia, weakPins}, topPinsSample, topPinAnnotations}. `topPinAnnotations` is the REAL per-pin Pinterest tags aggregated across the ranking pins for this exact keyword — use this as the PREFERRED source for save_keyword_score\'s `annotations` field. Slower (adds a page load per keyword) but gives the exact-match-weakness + save-velocity judgment the skill needs, plus real annotations in the same call. Recommended for the FINAL shortlist.'),
     niche: z.enum(['recipe', 'home']).optional().describe('Save thresholds differ — recipes tolerate more saves (default "recipe").'),
     force: z.boolean().optional().describe('Bypass the 3-day per-keyword cache and re-look-up live (default false).'),
   },

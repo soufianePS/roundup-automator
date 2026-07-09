@@ -521,8 +521,12 @@ fit, title_suggestion, pin_description, hashtags, peak_month, publish_by,
 annotations, top_pin_saves, search_volume, trend_points, source_notes}`.
 - `ctr_intent` (0–1): how likely searchers CLICK through vs. just save (see rubric).
 - **`annotations`** (array of strings): the PinClicks interest annotations on the winning
-  top pins — the exact tags Pinterest assigned. These are gold for the pin title/desc; grab
-  them from the top pins / Pin Stats. (The dashboard shows them as chips to reuse.)
+  top pins — the exact tags Pinterest assigned. Prefer `topPinAnnotations` from
+  `pinclicks_enrich(withTopPins:true)`'s result — real tags aggregated across the pins
+  actually ranking for THIS exact keyword (most precise). Fall back to `trend_titles`'
+  `annotations` field (bank-level Related Interests, less precise but still real) only if
+  `topPinAnnotations` wasn't fetched. These are gold for the pin title/description — never
+  invent tags. (The dashboard shows them as chips to reuse.)
 - **`top_pin_saves`** (number): the median save count of the top ~10 pins for this keyword
   (the REAL competition benchmark you already read to set `competition`). This is what a
   winner in this SERP actually earns — record it.
