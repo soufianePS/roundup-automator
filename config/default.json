@@ -6,10 +6,11 @@
     "titleFormula": "Number + power adjective + exact keyword + audience/benefit"
   },
   "images": {
-    "copyrightStance": "TBD",
+    "copyrightStance": "owner-accepted: any web image may be rehosted as long as source credit + link is shown on the image, and the site carries a general disclaimer that images are sourced from around the web with credit given. Decided 2026-07-09, owner's explicit risk call — not a legal opinion.",
     "preferPre2022ForGuaranteedReal": true,
     "rehostImages": true,
-    "requireCredit": true
+    "requireCredit": true,
+    "requireSiteDisclaimer": true
   },
   "opportunityRubricWeights": {
     "_note": "Not read by code — reference only, must match .claude/skills/keyword-research/SKILL.md (source of truth). competition is a MULTIPLIER on the base score (a gate for a brand-new, zero-trust Pinterest account), not a linear weight alongside the others — see the skill file's 'competition is a GATE, not an add-on' section.",

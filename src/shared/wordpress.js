@@ -143,4 +143,47 @@ export const WordPress = {
     Logger.success(`[WP] draft created: ${j.id}`);
     return { id: j.id, link: j.link };
   },
+
+  /**
+   * Delete a post AND every image it embeds — for cleaning up a test/bad
+   * post fully, not just hiding it. Media isn't tracked with the post as its
+   * WP "parent" (uploadImage doesn't set one), so this parses <img src="...">
+   * out of the post's own content and looks each one up by URL to find its
+   * media id. The post itself goes to Trash (reversible) — UNLESS it's
+   * already trashed, in which case WP's REST API 410s on a second soft
+   * delete, so this force=true permanently deletes it instead (confirmed
+   * live 2026-07-14: calling DELETE on an already-trashed post returns 410,
+   * not a no-op — don't assume it's safe to retry the same way twice). Each
+   * matched media item is always permanently deleted (force=true — there's
+   * no meaningful "undo" once you know you don't want the image).
+   */
+  async deletePostAndMedia(site, postId) {
+    const w = _wp(site);
+    const headers = { Authorization: _auth(w) };
+    const postResp = await _fetchRetry(`${w.url}/wp-json/wp/v2/posts/${postId}?context=edit`, { headers });
+    if (!postResp.ok) throw new Error(`[WP] could not read post ${postId}: ${postResp.status}`);
+    const post = await postResp.json();
+    const html = post.content?.raw ?? post.content?.rendered ?? '';
+    const urls = [...html.matchAll(/<img[^>]+src=["']([^"']+)["']/gi)].map(m => m[1]);
+
+    let mediaDeleted = 0;
+    for (const url of new Set(urls)) {
+      if (!url.startsWith(w.url)) continue; // only ever touch media on this same site
+      const filename = url.split('/').pop().replace(/\.(webp|jpe?g|png)$/i, '');
+      const searchResp = await _fetchRetry(`${w.url}/wp-json/wp/v2/media?search=${encodeURIComponent(filename)}`, { headers });
+      if (!searchResp.ok) continue;
+      const hits = await searchResp.json();
+      const hit = hits.find(m => m.source_url === url) || hits[0];
+      if (!hit) continue;
+      const delResp = await _fetchRetry(`${w.url}/wp-json/wp/v2/media/${hit.id}?force=true`, { method: 'DELETE', headers });
+      if (delResp.ok) mediaDeleted++;
+    }
+
+    const alreadyTrashed = post.status === 'trash';
+    const postDelUrl = `${w.url}/wp-json/wp/v2/posts/${postId}${alreadyTrashed ? '?force=true' : ''}`;
+    const postDelResp = await _fetchRetry(postDelUrl, { method: 'DELETE', headers });
+    if (!postDelResp.ok) throw new Error(`[WP] could not delete post ${postId}: ${postDelResp.status}`);
+    Logger.success(`[WP] post ${postId} ${alreadyTrashed ? 'permanently deleted' : 'trashed'}, ${mediaDeleted} media item(s) deleted`);
+    return { postTrashed: !alreadyTrashed, postDeleted: alreadyTrashed, mediaDeleted };
+  },
 };

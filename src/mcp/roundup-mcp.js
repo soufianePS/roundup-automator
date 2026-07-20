@@ -18,7 +18,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 
 import { getDb } from '../db/db.js';
-import { Sites, Topics, KeywordScores, Articles, ArticleItems, Pins, KeywordBank } from '../db/repos.js';
+import { Sites, Topics, KeywordScores, Articles, ArticleItems, Pins, KeywordBank, VideoJobs } from '../db/repos.js';
 import { WordPress } from '../shared/wordpress.js';
 import { DolphinAnty } from '../shared/dolphin.js';
 import { probePinterestAccount } from '../shared/pinterest-probe.js';
@@ -206,6 +206,27 @@ server.tool('wp_upload_image',
 server.tool('wp_probe', 'Re-connect to a WP site and fetch site name + authors + categories (active site or siteId).',
   { siteId: z.number().int().optional() },
   wrap(async ({ siteId }) => WordPress.probe(resolveSite(siteId))));
+
+// ─────────────────────────── Video job queue (progress reporting) ───────────────────────────
+// You are given a jobId in your task prompt when processing a video/reel job from the
+// queue. Call report_job_progress at EACH real stage as you go (not just at the end) so
+// the dashboard's progress bar reflects genuine progress, not a guess. Call EXACTLY ONE
+// of complete_video_job / fail_video_job when you are done — this is how the queue knows
+// to start the next job, so never skip it, even if you think the caller can infer it.
+server.tool('report_job_progress',
+  'Report live progress for a video-job you are processing from the queue. Call this at each real stage (e.g. step 1/8 "picked video", step 4/8 "extracted step 3 frames", step 8/8 "uploaded to WordPress") — the dashboard progress bar reads this directly.',
+  { jobId: z.number().int(), step: z.number().int(), total: z.number().int(), label: z.string() },
+  wrap(({ jobId, step, total, label }) => { VideoJobs.setProgress(jobId, step, total, label); return { ok: true }; }));
+
+server.tool('complete_video_job',
+  'Mark a video-job DONE. Call this exactly once, at the very end, after the WordPress draft has actually been created — never before. This is what tells the queue to start the next job.',
+  { jobId: z.number().int(), wpPostId: z.number().int(), wpPostLink: z.string() },
+  wrap(({ jobId, wpPostId, wpPostLink }) => { VideoJobs.complete(jobId, { wpPostId, wpPostLink }); return { ok: true }; }));
+
+server.tool('fail_video_job',
+  'Mark a video-job as FAILED with a clear, specific reason (e.g. "Instagram Reels are not supported yet", "video has no usable frames for any step", "WordPress upload rejected: <reason>"). Call this instead of silently giving up or fabricating a fake success — the queue needs an explicit signal either way to move on to the next job.',
+  { jobId: z.number().int(), reason: z.string() },
+  wrap(({ jobId, reason }) => { VideoJobs.fail(jobId, reason); return { ok: true }; }));
 
 // ─────────────────────────── Dolphin / Pinterest ───────────────────────────
 server.tool('list_dolphin_profiles', 'List Dolphin Anty browser profiles (Pinterest accounts) — local API first, cloud fallback.', {},

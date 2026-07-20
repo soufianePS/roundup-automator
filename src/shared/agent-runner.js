@@ -192,6 +192,7 @@ let _current = null;
 function _emit(run, ev) {
   run.events.push(ev);
   for (const res of run.listeners) { try { res.write(`event: ${ev.type}\ndata: ${JSON.stringify(ev)}\n\n`); } catch {} }
+  for (const cb of run.internalListeners) { try { cb(ev); } catch {} }
 }
 
 function _toolInfo(name, input) {
@@ -214,7 +215,7 @@ export function startAgentRun(prompt, { sessionId = null, cwd, provider = 'claud
   const runId = (globalThis.crypto?.randomUUID?.() || String(Date.now()));
   const mcpConfig = resolveMcpConfig(workdir);           // Claude/agy use the file path
   const proc = drv.spawn(workdir, { sessionId, mcpConfig });
-  const run = { proc, events: [], listeners: new Set(), done: false, sessionId: null, streamedText: false, finalResult: '', provider };
+  const run = { proc, events: [], listeners: new Set(), internalListeners: new Set(), done: false, sessionId: null, streamedText: false, finalResult: '', provider };
   runs.set(runId, run);
   _current = run;
   Logger.info(`[Agent] run ${runId} started via ${drv.label}`);
@@ -260,6 +261,17 @@ export function subscribeAgentRun(runId, res) {
   if (run.done) { res.end(); return; }
   run.listeners.add(res);
   res.on('close', () => run.listeners.delete(res));
+}
+
+// Non-HTTP subscription — for internal callers (e.g. the video-job queue) that
+// need to know when a run finishes without an Express `res` to write SSE to.
+// Calls `cb(event)` for every event, including replaying ones already emitted.
+export function onRunEvent(runId, cb) {
+  const run = runs.get(runId);
+  if (!run) return false;
+  for (const ev of run.events) cb(ev);
+  if (!run.done) run.internalListeners.add(cb);
+  return true;
 }
 
 export function stopAgentRun() {

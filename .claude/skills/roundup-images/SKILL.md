@@ -63,6 +63,13 @@ the image on our WordPress and show the credit link under it.
 - The hero is a designed title-card the app builds later — do NOT make a collage of
   other people's photos.
 - Never invent a source. If you can't credit it, don't use it.
+- **Copyright stance (owner decision 2026-07-09):** any web image may be rehosted
+  as long as (1) a visible source credit + link is shown under the image, AND
+  (2) the site has a general disclaimer (footer or dedicated page) stating images
+  are sourced from around the web with credit given. This is the owner's explicit
+  risk call, not a legal guarantee — before the FIRST post goes out, confirm the
+  site actually has that disclaimer page/footer text live; if it doesn't exist yet,
+  flag it instead of assuming it's there.
 
 ## Report back
 Tell the user: article title, how many images sourced, the WordPress draft link,

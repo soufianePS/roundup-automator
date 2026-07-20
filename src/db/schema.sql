@@ -129,6 +129,30 @@ CREATE TABLE IF NOT EXISTS performance (
 );
 CREATE INDEX IF NOT EXISTS idx_perf_keyword ON performance(keyword);
 
+-- Video/Reel -> WordPress post queue. One row per link the user submits; the
+-- headless agent (Claude or Codex) processes them ONE AT A TIME, in order —
+-- never in parallel. progress_step/progress_total/progress_label are updated
+-- live by the agent itself (via the report_job_progress MCP tool) as it works.
+CREATE TABLE IF NOT EXISTS video_jobs (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  url             TEXT NOT NULL,
+  platform        TEXT,                          -- youtube | youtube_shorts | instagram_reel
+  provider        TEXT DEFAULT 'claude',          -- claude | codex
+  site_id         INTEGER REFERENCES sites(id),   -- which WP site the post gets created on (NULL = active site)
+  status          TEXT DEFAULT 'queued',          -- queued | running | done | error
+  progress_step   INTEGER DEFAULT 0,
+  progress_total  INTEGER DEFAULT 0,
+  progress_label  TEXT,
+  run_id          TEXT,                           -- agent-runner runId while running (for the live SSE log)
+  wp_post_id      INTEGER,
+  wp_post_link    TEXT,
+  error_message   TEXT,
+  created_at      TEXT DEFAULT (datetime('now')),
+  started_at      TEXT,
+  finished_at     TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_video_jobs_status ON video_jobs(status);
+
 -- Background jobs (run state, logs, resume checkpoints, kill switch).
 CREATE TABLE IF NOT EXISTS jobs (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,

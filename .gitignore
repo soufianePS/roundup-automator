@@ -18,3 +18,7 @@ node_modules/
 output/
 profiles/
 screenshots/
+
+# Local video/frame extraction workspaces (large, reproducible test artifacts)
+tmp/
+.tmp/

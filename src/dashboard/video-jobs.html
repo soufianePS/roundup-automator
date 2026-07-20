@@ -1,0 +1,326 @@
+<div class="app">
+  <aside class="side">
+    <div class="brand"><div class="dot">R</div><div><b>Roundup</b><span>Family Home Studio</span></div></div>
+    <nav>
+      <a href="/"><span class="ic">◧</span> Overview</a>
+      <a href="/agent"><span class="ic">✧</span> Agent</a>
+      <a class="active" href="/video-jobs"><span class="ic">▶</span> Video Queue</a>
+      <a href="/#keywords"><span class="ic">✦</span> Keyword Opportunities</a>
+      <a href="/#queue"><span class="ic">☰</span> Topic Queue</a>
+      <a class="soon"><span class="ic">▤</span> Articles <em>soon</em></a>
+      <a class="soon"><span class="ic">◈</span> Pins &amp; Schedule <em>soon</em></a>
+      <a href="/settings"><span class="ic">⚙</span> Settings</a>
+    </nav>
+    <div class="foot">runs on your<br>Claude / Codex login · no API</div>
+  </aside>
+
+  <main>
+    <div class="top">
+      <div>
+        <div class="eyebrow">Video Queue</div>
+        <h1>YouTube video / Short → WordPress post</h1>
+        <p class="lead">Paste a link, pick an agent and a site, add it to the queue. Check rows to manage several at once, or use a row's own buttons for one at a time.</p>
+      </div>
+    </div>
+
+    <div class="card"><div class="core">
+      <div class="card-h"><h2>Add a link</h2><span class="hint">YouTube video or Short — Instagram Reels not supported yet</span></div>
+      <div class="vq-add">
+        <input id="url" type="text" placeholder="https://www.youtube.com/watch?v=… or /shorts/…" />
+        <select id="provider">
+          <option value="claude">Claude</option>
+          <option value="codex">Codex</option>
+        </select>
+        <select id="site"><option value="">Loading sites…</option></select>
+        <button class="btn primary" id="addBtn">Add to queue <span class="cap">+</span></button>
+      </div>
+    </div></div>
+
+    <div class="card"><div class="core">
+      <div class="card-h">
+        <h2>Queue <span id="jobCount" class="hint"></span></h2>
+        <button class="btn primary" id="startBtn">Start queue <span class="cap">▶</span></button>
+      </div>
+      <div id="bulkbar" class="bulkbar hidden">
+        <span><b id="bulkCount">0</b> selected</span>
+        <div class="bulkbar-actions">
+          <button class="btn sm" id="bulkRemove">Remove queued</button>
+          <button class="btn sm danger" id="bulkDeleteWp">Delete post + media</button>
+          <button class="btn sm" id="bulkClear">Clear selection</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="vq-table">
+          <colgroup>
+            <col style="width:30px"><col><col style="width:84px"><col style="width:130px">
+            <col style="width:84px"><col style="width:150px"><col style="width:150px"><col style="width:92px">
+          </colgroup>
+          <thead><tr>
+            <th class="col-check"><input type="checkbox" id="selAll" /></th>
+            <th>Link</th><th>Agent</th><th>Site</th><th>Status</th><th>Progress</th><th>Result</th><th></th>
+          </tr></thead>
+          <tbody id="rows"><tr><td colspan="8" class="empty">No jobs queued yet.</td></tr></tbody>
+        </table>
+      </div>
+    </div></div>
+  </main>
+</div>
+
+<style>
+.vq-add{display:flex;gap:10px;padding:15px 18px;align-items:center;flex-wrap:wrap}
+.vq-add input{flex:1;min-width:260px;font-family:inherit;font-size:13.5px;padding:9px 13px;border:1px solid var(--hairline);border-radius:9px;background:var(--surface);color:var(--ink)}
+.vq-add select{font-family:inherit;font-size:13.5px;padding:9px 12px;border:1px solid var(--hairline);border-radius:9px;background:var(--surface);color:var(--ink)}
+
+/* Bulk-select bar */
+.bulkbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 18px;background:var(--accent-soft);border-bottom:1px solid var(--accent-line);font-size:12.5px;color:var(--accent-press);font-weight:600}
+.bulkbar.hidden{display:none}
+.bulkbar-actions{display:flex;gap:8px}
+
+/* Dense table — deliberately narrow, truncated columns (not wide free-text
+   cells) so many rows fit on screen at once and nothing forces horizontal
+   scroll; a per-row ✎ toggles just THAT row into an edit state instead of
+   every queued row always showing full-width inputs. */
+.table-wrap{overflow-x:auto}
+/* table-layout:fixed + a <colgroup> pins every column to a fixed width up
+   front, so switching a row into inline-edit mode (inputs/selects) can never
+   grow the table past its container — the bug this whole redesign started
+   from. Every cell's content must then truncate to ITS OWN cell (max-width:
+   100%, not a magic px number that could drift from the actual column). */
+.vq-table{width:100%;border-collapse:collapse;font-size:12.8px;table-layout:fixed}
+.vq-table th{text-align:left;font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);padding:9px 10px;border-bottom:1px solid var(--hairline-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vq-table td{padding:7px 10px;border-bottom:1px solid var(--hairline-2);vertical-align:middle;overflow:hidden}
+.vq-table tbody tr:last-child td{border-bottom:0}
+.vq-table tbody tr:hover{background:var(--shell)}
+.vq-table tbody tr.sel{background:var(--accent-soft)}
+.col-check{width:30px}
+input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px;cursor:pointer}
+.vq-link{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink);text-decoration:none;font-weight:550}
+.vq-link:hover{color:var(--accent-press)}
+.vq-site{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)}
+.vq-result{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vq-result a{color:var(--accent-press);font-weight:550}
+.vq-result.err{color:var(--high)}
+.vq-progress{display:flex;align-items:center;gap:7px;min-width:0}
+.vq-progress .pbar{flex:1;height:6px;border-radius:99px;background:var(--shell);overflow:hidden;min-width:30px}
+.vq-progress .pbar>i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--accent-press))}
+.vq-progress .pn{font-family:var(--mono);font-size:10.5px;color:var(--muted);white-space:nowrap;flex:none}
+.vq-actions{display:flex;gap:4px;justify-content:flex-end;white-space:nowrap}
+.vq-editcell input,.vq-editcell select{font-family:inherit;font-size:12.5px;padding:6px 8px;border:1px solid var(--hairline);border-radius:7px;background:var(--surface);color:var(--ink);width:100%;min-width:0;box-sizing:border-box}
+.plabel-mini{font-size:10.5px;color:var(--faint);margin-top:2px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+</style>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => (s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+
+const STATUS_CLASS = { queued: 'idle', running: 'busy', done: 'ok', error: 'err' };
+const STATUS_LABEL = { queued: 'queued', running: 'running…', done: 'done', error: 'error' };
+
+let sites = [];
+let jobs = [];
+let selected = new Set();   // job ids, persists across refresh() polls
+let editingId = null;       // job id currently showing inline edit fields
+
+function siteOptions(selectedId) {
+  if (!sites.length) return '<option value="">no sites configured</option>';
+  return sites.map(s => `<option value="${s.id}" ${Number(selectedId)===s.id?'selected':''}>${esc(s.name || s.wp_url || ('Site '+s.id))}</option>`).join('');
+}
+function siteName(id) {
+  const s = sites.find(s => s.id === Number(id));
+  return s ? (s.name || s.wp_url || ('Site '+s.id)) : '(active site)';
+}
+
+function rowHtml(j) {
+  const pct = j.progress_total > 0 ? Math.round(100 * j.progress_step / j.progress_total) : (j.status === 'done' ? 100 : 0);
+  const barWidth = j.status === 'running' && !j.progress_total ? 8 : pct;
+  const progressCell = `<div class="vq-progress"><div class="pbar"><i style="width:${barWidth}%"></i></div>
+    <span class="pn">${j.progress_total ? j.progress_step+'/'+j.progress_total : (j.status==='running'?'…':'—')}</span></div>
+    ${j.progress_label && j.status==='running' ? `<div class="plabel-mini" title="${esc(j.progress_label)}">${esc(j.progress_label)}</div>` : ''}`;
+
+  let resultCell = '<span class="vq-result">—</span>';
+  if (j.status === 'done' && j.wp_post_link) resultCell = `<span class="vq-result"><a href="${esc(j.wp_post_link)}" target="_blank" rel="noopener">view draft →</a></span>`;
+  else if (j.status === 'error') resultCell = `<span class="vq-result err" title="${esc(j.error_message||'')}">${esc(j.error_message||'error')}</span>`;
+
+  const editing = editingId === j.id;
+  const editable = j.status === 'queued';
+
+  const linkCell = editing
+    ? `<td class="vq-editcell"><input data-field="url" value="${esc(j.url)}" /></td>`
+    : `<td><a class="vq-link" href="${esc(j.url)}" target="_blank" rel="noopener" title="${esc(j.url)}">${esc(j.url)}</a></td>`;
+  const agentCell = editing
+    ? `<td class="vq-editcell"><select data-field="provider"><option value="claude" ${j.provider==='claude'?'selected':''}>Claude</option><option value="codex" ${j.provider==='codex'?'selected':''}>Codex</option></select></td>`
+    : `<td><span class="badge on">${esc(j.provider)}</span></td>`;
+  const siteCell = editing
+    ? `<td class="vq-editcell"><select data-field="siteId">${siteOptions(j.site_id)}</select></td>`
+    : `<td><span class="vq-site" title="${esc(siteName(j.site_id))}">${esc(siteName(j.site_id))}</span></td>`;
+
+  let actions;
+  if (editing) {
+    actions = `<div class="vq-actions">
+      <button class="ic-btn" data-save="${j.id}" data-tip="Save">✓</button>
+      <button class="ic-btn" data-canceledit="${j.id}" data-tip="Cancel">✕</button>
+    </div>`;
+  } else if (editable) {
+    actions = `<div class="vq-actions">
+      <button class="ic-btn" data-run="${j.id}" data-tip="Run now">▶</button>
+      <button class="ic-btn" data-edit="${j.id}" data-tip="Edit">✎</button>
+      <button class="ic-btn dismiss" data-remove="${j.id}" data-tip="Remove">🗑</button>
+    </div>`;
+  } else if (j.status === 'done' || j.status === 'error') {
+    actions = `<div class="vq-actions">
+      <button class="ic-btn dismiss" data-delete-wp="${j.id}" data-tip="${j.wp_post_id ? 'Delete WP post + media' : 'Delete row'}">🗑</button>
+    </div>`;
+  } else {
+    actions = '';
+  }
+
+  return `<tr data-id="${j.id}" class="${selected.has(j.id)?'sel':''}">
+    <td class="col-check"><input type="checkbox" data-check="${j.id}" ${selected.has(j.id)?'checked':''} /></td>
+    ${linkCell}
+    ${agentCell}
+    ${siteCell}
+    <td><span class="status ${STATUS_CLASS[j.status]||'idle'}">${STATUS_LABEL[j.status]||j.status}</span></td>
+    <td>${progressCell}</td>
+    <td>${resultCell}</td>
+    <td>${actions}</td>
+  </tr>`;
+}
+
+function rowFields(tr) {
+  const get = (f) => tr.querySelector(`[data-field="${f}"]`);
+  const urlEl = get('url'), provEl = get('provider'), siteEl = get('siteId');
+  return {
+    url: urlEl ? urlEl.value.trim() : undefined,
+    provider: provEl ? provEl.value : undefined,
+    siteId: siteEl ? (siteEl.value || null) : undefined,
+  };
+}
+
+function updateBulkBar() {
+  // drop selections for rows that no longer exist
+  const liveIds = new Set(jobs.map(j => j.id));
+  for (const id of [...selected]) if (!liveIds.has(id)) selected.delete(id);
+
+  const selJobs = jobs.filter(j => selected.has(j.id));
+  const queuedCount = selJobs.filter(j => j.status === 'queued').length;
+  const doneErrCount = selJobs.filter(j => j.status === 'done' || j.status === 'error').length;
+
+  $('bulkbar').classList.toggle('hidden', selected.size === 0);
+  $('bulkCount').textContent = selected.size;
+  $('bulkRemove').style.display = queuedCount ? '' : 'none';
+  $('bulkRemove').textContent = `Remove queued (${queuedCount})`;
+  $('bulkDeleteWp').style.display = doneErrCount ? '' : 'none';
+  $('bulkDeleteWp').textContent = `Delete post + media (${doneErrCount})`;
+
+  const visibleIds = jobs.map(j => j.id);
+  $('selAll').checked = visibleIds.length > 0 && visibleIds.every(id => selected.has(id));
+  $('selAll').indeterminate = selected.size > 0 && !$('selAll').checked;
+}
+
+async function refresh() {
+  const r = await fetch('/api/video-jobs').then(r=>r.json()).catch(()=>({jobs:[]}));
+  jobs = r.jobs || [];
+  $('jobCount').textContent = jobs.length ? `· ${jobs.length}` : '';
+  $('rows').innerHTML = jobs.length ? jobs.map(rowHtml).join('') : '<tr><td colspan="8" class="empty">No jobs queued yet.</td></tr>';
+  $('startBtn').disabled = r.processing || !jobs.some(j => j.status === 'queued');
+  $('startBtn').textContent = r.processing ? 'Queue running…' : 'Start queue';
+  updateBulkBar();
+
+  document.querySelectorAll('[data-check]').forEach(cb => cb.onchange = () => {
+    const id = Number(cb.dataset.check);
+    if (cb.checked) selected.add(id); else selected.delete(id);
+    updateBulkBar();
+    cb.closest('tr').classList.toggle('sel', cb.checked);
+  });
+  document.querySelectorAll('[data-remove]').forEach(b => b.onclick = async () => {
+    await fetch('/api/video-jobs/'+b.dataset.remove, { method: 'DELETE' });
+    refresh();
+  });
+  document.querySelectorAll('[data-delete-wp]').forEach(b => b.onclick = async () => {
+    if (!confirm('Delete the WordPress post and its images? This cannot be undone for the images.')) return;
+    b.disabled = true;
+    const res = await fetch('/api/video-jobs/'+b.dataset.deleteWp+'/wp-post', { method: 'DELETE' }).then(r=>r.json()).catch(e=>({error:e.message}));
+    if (res.error) alert('Failed: '+res.error);
+    refresh();
+  });
+  document.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => { editingId = Number(b.dataset.edit); refresh(); });
+  document.querySelectorAll('[data-canceledit]').forEach(b => b.onclick = () => { editingId = null; refresh(); });
+  document.querySelectorAll('[data-save]').forEach(b => b.onclick = async () => {
+    const tr = b.closest('tr');
+    const fields = rowFields(tr);
+    b.disabled = true;
+    await fetch('/api/video-jobs/'+b.dataset.save, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(fields) }).catch(()=>{});
+    editingId = null;
+    refresh();
+  });
+  document.querySelectorAll('[data-run]').forEach(b => b.onclick = async () => {
+    const tr = b.closest('tr');
+    const fields = rowFields(tr); // no-op object if row isn't in edit mode (fields all undefined)
+    b.disabled = true;
+    if (editingId === Number(b.dataset.run)) {
+      await fetch('/api/video-jobs/'+b.dataset.run, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(fields) }).catch(()=>{});
+    }
+    const res = await fetch('/api/video-jobs/'+b.dataset.run+'/start', { method: 'POST' }).then(r=>r.json()).catch(()=>({ok:false}));
+    if (!res.ok) alert('Another job is already running — wait for it to finish first.');
+    editingId = null;
+    b.disabled = false;
+    refresh();
+  });
+}
+
+$('selAll').onchange = () => {
+  if ($('selAll').checked) jobs.forEach(j => selected.add(j.id));
+  else jobs.forEach(j => selected.delete(j.id));
+  refresh();
+};
+$('bulkClear').onclick = () => { selected.clear(); refresh(); };
+$('bulkRemove').onclick = async () => {
+  const ids = jobs.filter(j => selected.has(j.id) && j.status === 'queued').map(j => j.id);
+  if (!ids.length) return;
+  if (!confirm(`Remove ${ids.length} queued job(s) from the queue?`)) return;
+  $('bulkRemove').disabled = true;
+  for (const id of ids) { await fetch('/api/video-jobs/'+id, { method: 'DELETE' }).catch(()=>{}); selected.delete(id); }
+  $('bulkRemove').disabled = false;
+  refresh();
+};
+$('bulkDeleteWp').onclick = async () => {
+  const ids = jobs.filter(j => selected.has(j.id) && (j.status === 'done' || j.status === 'error')).map(j => j.id);
+  if (!ids.length) return;
+  if (!confirm(`Delete ${ids.length} WordPress post(s) + their images? This cannot be undone for the images.`)) return;
+  const btn = $('bulkDeleteWp');
+  for (let i = 0; i < ids.length; i++) {
+    btn.disabled = true; btn.textContent = `Deleting ${i+1}/${ids.length}…`;
+    await fetch('/api/video-jobs/'+ids[i]+'/wp-post', { method: 'DELETE' }).catch(()=>{});
+    selected.delete(ids[i]);
+  }
+  btn.disabled = false;
+  refresh();
+};
+
+async function loadSites() {
+  sites = await fetch('/api/sites').then(r=>r.json()).catch(()=>[]);
+  $('site').innerHTML = sites.length
+    ? '<option value="">(use active site)</option>' + siteOptions(null)
+    : '<option value="">no sites configured — add one in Settings</option>';
+}
+
+$('addBtn').onclick = async () => {
+  const url = $('url').value.trim();
+  if (!url) return;
+  $('addBtn').disabled = true;
+  await fetch('/api/video-jobs', { method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ url, provider: $('provider').value, siteId: $('site').value || null }) }).catch(()=>{});
+  $('addBtn').disabled = false;
+  $('url').value = '';
+  refresh();
+};
+$('url').addEventListener('keydown', e => { if (e.key === 'Enter') $('addBtn').click(); });
+
+$('startBtn').onclick = async () => {
+  await fetch('/api/video-jobs/start', { method: 'POST' }).catch(()=>{});
+  refresh();
+};
+
+(async () => { await loadSites(); refresh(); })();
+setInterval(refresh, 2500);
+</script>

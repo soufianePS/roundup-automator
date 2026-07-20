@@ -228,3 +228,52 @@ export const Jobs = {
     db().prepare(`UPDATE jobs SET ${sets.join(', ')} WHERE id=?`).run(...vals, id);
   },
 };
+
+function detectPlatform(url) {
+  const u = String(url || '');
+  if (/instagram\.com\/(reels?|p)\//i.test(u)) return 'instagram_reel';
+  if (/youtube\.com\/shorts\//i.test(u)) return 'youtube_shorts';
+  if (/youtu\.be\/|youtube\.com\/watch/i.test(u)) return 'youtube';
+  return 'unknown';
+}
+
+// Video/Reel -> WordPress post queue. Rows are processed strictly one at a
+// time by video-job-queue.js (never in parallel) — this repo only tracks state.
+export const VideoJobs = {
+  enqueue(url, provider = 'claude', siteId = null) {
+    return db().prepare('INSERT INTO video_jobs (url, platform, provider, site_id) VALUES (?, ?, ?, ?)')
+      .run(url, detectPlatform(url), provider || 'claude', siteId ?? null).lastInsertRowid;
+  },
+  list() { return db().prepare('SELECT * FROM video_jobs ORDER BY id ASC').all(); },
+  get(id) { return db().prepare('SELECT * FROM video_jobs WHERE id=?').get(id); },
+  nextQueued() { return db().prepare("SELECT * FROM video_jobs WHERE status='queued' ORDER BY id ASC LIMIT 1").get(); },
+  remove(id) { db().prepare("DELETE FROM video_jobs WHERE id=? AND status='queued'").run(id); },
+  // Unlike remove(), works on a row in ANY status — used after the WP post +
+  // media it created have been cleaned up, so no dangling dead-link row remains.
+  forceRemove(id) { db().prepare('DELETE FROM video_jobs WHERE id=?').run(id); },
+  // Only editable while still queued — once running/done/error the row is a record, not a form.
+  edit(id, { url, provider, siteId }) {
+    const cur = db().prepare("SELECT * FROM video_jobs WHERE id=? AND status='queued'").get(id);
+    if (!cur) return false;
+    db().prepare('UPDATE video_jobs SET url=?, platform=?, provider=?, site_id=? WHERE id=?').run(
+      url ?? cur.url, url ? detectPlatform(url) : cur.platform, provider ?? cur.provider,
+      siteId !== undefined ? siteId : cur.site_id, id
+    );
+    return true;
+  },
+  start(id, runId) {
+    db().prepare("UPDATE video_jobs SET status='running', run_id=?, started_at=datetime('now') WHERE id=?").run(runId, id);
+  },
+  setProgress(id, step, total, label) {
+    db().prepare('UPDATE video_jobs SET progress_step=?, progress_total=?, progress_label=? WHERE id=?')
+      .run(step ?? 0, total ?? 0, label ?? null, id);
+  },
+  complete(id, { wpPostId, wpPostLink } = {}) {
+    db().prepare("UPDATE video_jobs SET status='done', wp_post_id=?, wp_post_link=?, finished_at=datetime('now') WHERE id=?")
+      .run(wpPostId ?? null, wpPostLink ?? null, id);
+  },
+  fail(id, errorMessage) {
+    db().prepare("UPDATE video_jobs SET status='error', error_message=?, finished_at=datetime('now') WHERE id=?")
+      .run(String(errorMessage || 'unknown error').slice(0, 500), id);
+  },
+};

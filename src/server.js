@@ -8,11 +8,12 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { Logger } from './shared/logger.js';
 import { getDb } from './db/db.js';
-import { Sites, Topics, KeywordScores, KeywordBank } from './db/repos.js';
+import { Sites, Topics, KeywordScores, KeywordBank, VideoJobs } from './db/repos.js';
 import { WordPress } from './shared/wordpress.js';
 import { DolphinAnty } from './shared/dolphin.js';
 import { probePinterestAccount } from './shared/pinterest-probe.js';
 import { startAgentRun, subscribeAgentRun, stopAgentRun, agentProviders } from './shared/agent-runner.js';
+import { startVideoQueue, isVideoQueueProcessing, runSingleJob } from './shared/video-job-queue.js';
 import { openLoginSession, closeLoginSession, isLoginSessionOpen, profileExists, DEFAULT_TABS } from './shared/research-browser.js';
 import { listProfiles, createProfile, setActiveProfile, activeProfileName } from './shared/profiles.js';
 import { secretOpt, saveSecretSection } from './config.js';
@@ -43,6 +44,7 @@ function page(title, file) {
 app.get('/', (req, res) => res.type('html').send(page('Roundup · Overview', 'index.html')));
 app.get('/settings', (req, res) => res.type('html').send(page('Roundup · Settings', 'settings.html')));
 app.get('/agent', (req, res) => res.type('html').send(page('Roundup · Agent', 'agent.html')));
+app.get('/video-jobs', (req, res) => res.type('html').send(page('Roundup · Video Queue', 'video-jobs.html')));
 
 // ── Sites API (multi-site) ──
 app.get('/api/sites', (req, res) => { try { res.json(Sites.list()); } catch (e) { res.status(500).json({ error: e.message }); } });
@@ -137,6 +139,66 @@ app.post('/api/agent/run', async (req, res) => {
 });
 app.get('/api/agent/stream/:runId', (req, res) => subscribeAgentRun(req.params.runId, res));
 app.post('/api/agent/stop', (req, res) => res.json({ ok: stopAgentRun() }));
+
+// ── Video/Reel -> WordPress post queue ──
+// Jobs run STRICTLY ONE AT A TIME (see video-job-queue.js) — /start is safe to
+// call repeatedly (e.g. after adding more rows); it's a no-op while draining.
+app.get('/api/video-jobs', (req, res) => {
+  try { res.json({ jobs: VideoJobs.list(), processing: isVideoQueueProcessing() }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/video-jobs', (req, res) => {
+  try {
+    const { url, provider, siteId } = req.body || {};
+    if (!url || !url.trim()) return res.status(400).json({ error: 'url required' });
+    const id = VideoJobs.enqueue(url.trim(), provider || 'claude', siteId ? Number(siteId) : null);
+    res.json({ ok: true, id });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Edit a still-queued row (link / agent / target site) before it runs.
+app.put('/api/video-jobs/:id', (req, res) => {
+  try {
+    const { url, provider, siteId } = req.body || {};
+    const ok = VideoJobs.edit(Number(req.params.id), {
+      url: url?.trim(), provider,
+      siteId: siteId === undefined ? undefined : (siteId ? Number(siteId) : null),
+    });
+    if (!ok) return res.status(400).json({ error: 'job not found or no longer queued (already started)' });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.delete('/api/video-jobs/:id', (req, res) => {
+  try { VideoJobs.remove(Number(req.params.id)); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Full cleanup for a done/error row: trash its WordPress post, permanently
+// delete every image it embedded, then remove the row itself (any status —
+// unlike plain DELETE above, which only removes still-queued rows).
+app.delete('/api/video-jobs/:id/wp-post', async (req, res) => {
+  try {
+    const job = VideoJobs.get(Number(req.params.id));
+    if (!job) return res.status(404).json({ error: 'job not found' });
+    if (job.wp_post_id) {
+      const site = (job.site_id ? Sites.get(job.site_id) : null) || Sites.getActive();
+      if (!site) return res.status(400).json({ error: 'cannot resolve the site this post was created on' });
+      await WordPress.deletePostAndMedia(site, job.wp_post_id);
+    }
+    VideoJobs.forceRemove(job.id);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Run just this one row now (out of order) — no-op (ok:false) if another job
+// is already running, since only one agent runs at a time across the queue.
+app.post('/api/video-jobs/:id/start', async (req, res) => {
+  try { res.json({ ok: await runSingleJob(Number(req.params.id)) }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/video-jobs/start', (req, res) => {
+  // Fire-and-forget — the queue drains in the background; the client polls
+  // GET /api/video-jobs for live status/progress on every row.
+  startVideoQueue().catch(e => Logger.error(`[video-queue] ${e.message}`));
+  res.json({ ok: true });
+});
 
 // ── Agent research browser (one persistent, logged-in profile) ──
 app.get('/api/browser/status', (req, res) =>
